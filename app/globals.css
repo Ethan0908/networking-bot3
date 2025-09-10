@@ -14,6 +14,16 @@ main {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+.nav-link {
+  display: inline-block;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #0070f3;
+  color: white;
+  text-decoration: none;
+}
+
 .search-form {
   display: flex;
   gap: 8px;

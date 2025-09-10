@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 
 export default function Rolodex() {
   const [term, setTerm] = useState("");
@@ -30,6 +31,9 @@ export default function Rolodex() {
   return (
     <main>
       <h1>Rolodex</h1>
+      <Link href="/rolodex" className="nav-link">
+        Add Contacts
+      </Link>
       <form onSubmit={onSearch} className="search-form">
         <input
           value={term}
