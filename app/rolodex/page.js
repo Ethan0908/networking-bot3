@@ -28,7 +28,7 @@ export default function Rolodex() {
   async function fetchContacts() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/rolodex?action=view`, {
+        const res = await fetch(`/api/rolodex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_external_id: userId }),
@@ -50,7 +50,7 @@ export default function Rolodex() {
   async function onCreate(e) {
     e.preventDefault();
     try {
-      const res = await fetch(`/api/rolodex?action=create`, {
+        const res = await fetch(`/api/rolodex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_external_id: userId, ...form }),
@@ -76,7 +76,7 @@ export default function Rolodex() {
 
   async function saveEdit(id) {
     try {
-      const res = await fetch(`/api/rolodex?action=update`, {
+      const res = await fetch(`/api/rolodex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_external_id: userId, contact_id: id, ...editFields }),
@@ -93,7 +93,7 @@ export default function Rolodex() {
   async function sendEmail(e) {
     e.preventDefault();
     try {
-      const res = await fetch(`/api/rolodex?action=email`, {
+      const res = await fetch(`/api/rolodex`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
