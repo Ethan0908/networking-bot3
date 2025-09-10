@@ -28,20 +28,29 @@ export default function Rolodex() {
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "40px auto", padding: 16 }}>
+    <main>
       <h1>Rolodex</h1>
-      <form onSubmit={onSearch} style={{ display: "flex", gap: 8 }}>
-        <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Company or name"
-          style={{ flex: 1, padding: 8, border: "1px solid #ccc", borderRadius: 8 }} />
-        <button type="submit" style={{ padding: "8px 12px", borderRadius: 8 }}>
+      <form onSubmit={onSearch} className="search-form">
+        <input
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder="Company or name"
+        />
+        <button type="submit" disabled={loading}>
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
-      {err && <p style={{ color: "red" }}>{err}</p>}
-      <ul style={{ marginTop: 16 }}>
-        {Array.isArray(results) ? results.map((r, i) => (
-          <li key={r.id || i}>{r.name || r.title || JSON.stringify(r)}</li>
-        )) : <li>{JSON.stringify(results)}</li>}
+      {err && <p className="error">{err}</p>}
+      <ul className="results">
+        {Array.isArray(results) ? (
+          results.map((r, i) => (
+            <li key={r.id || i} className="result-card">
+              {r.name || r.title || JSON.stringify(r)}
+            </li>
+          ))
+        ) : (
+          <li className="result-card">{JSON.stringify(results)}</li>
+        )}
       </ul>
     </main>
   );
