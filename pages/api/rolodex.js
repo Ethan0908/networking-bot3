@@ -1,16 +1,7 @@
 export default async function handler(req, res) {
-  const { action } = req.query;
-  const base = process.env.N8N_WEBHOOK_URL;
-  if (!base) {
-    res.status(500).json({ error: "Missing N8N_WEBHOOK_URL" });
-    return;
-  }
-  if (!action) {
-    res.status(400).json({ error: "Missing action" });
-    return;
-  }
+  const url = "http://35.196.73.136:5678/webhook/rolodex/save";
   try {
-    const response = await fetch(`${base}/${action}`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
