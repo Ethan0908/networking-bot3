@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  const url = "http://35.196.73.136:5678/webhook/rolodex/save";
+  const url = "http://34.26.55.38:5678/webhook/rolodex/save";
   try {
     const response = await fetch(url, {
       method: "POST",
