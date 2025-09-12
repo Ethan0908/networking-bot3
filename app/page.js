@@ -28,6 +28,23 @@ export default function Rolodex() {
     }
   }
 
+  async function send(action, item) {
+    try {
+      setErr("");
+      const r = await fetch("/api/n8n", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, item })
+      });
+      if (!r.ok) {
+        const data = await r.json();
+        throw new Error(data?.error || "Request failed");
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
   return (
     <main>
       <h1>Rolodex</h1>
@@ -50,6 +67,12 @@ export default function Rolodex() {
           results.map((r, i) => (
             <li key={r.id || i} className="result-card">
               {r.name || r.title || JSON.stringify(r)}
+              <div style={{ marginTop: 8 }}>
+                <button onClick={() => send("view", r)}>View</button>
+                <button onClick={() => send("create", r)} style={{ marginLeft: 4 }}>
+                  Create
+                </button>
+              </div>
             </li>
           ))
         ) : (
