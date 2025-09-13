@@ -8,14 +8,15 @@ export default function Rolodex() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
-  async function onSearch(e) {
+  async function onSubmit(e) {
     e.preventDefault();
+    const action = e.nativeEvent.submitter?.value;
     setLoading(true); setErr("");
     try {
       const r = await fetch("/api/n8n", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "search", term })
+        body: JSON.stringify({ action, term })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || "Request failed");
@@ -34,14 +35,23 @@ export default function Rolodex() {
       <Link href="/rolodex" className="nav-link">
         Add Contacts
       </Link>
-      <form onSubmit={onSearch} className="search-form">
+      <form onSubmit={onSubmit} className="search-form">
         <input
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Company or name"
         />
-        <button type="submit" disabled={loading}>
-          {loading ? "Searching…" : "Search"}
+        <button type="submit" value="search" disabled={loading}>
+          {loading ? "Working…" : "Search"}
+        </button>
+        <button type="submit" value="create" disabled={loading}>
+          {loading ? "Working…" : "Create"}
+        </button>
+        <button type="submit" value="update" disabled={loading}>
+          {loading ? "Working…" : "Update"}
+        </button>
+        <button type="submit" value="email" disabled={loading}>
+          {loading ? "Working…" : "Email"}
         </button>
       </form>
       {err && <p className="error">{err}</p>}
