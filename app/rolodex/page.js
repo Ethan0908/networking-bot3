@@ -22,30 +22,22 @@ export default function Rolodex() {
     setLoading(true);
     setErr("");
     const body = { action, user_external_id: userId };
+    const contactDetails = {
+      full_name: fullName,
+      title,
+      company,
+      location,
+      email,
+      profile_url: profileUrl,
+    };
     if (action === "create") {
-      Object.assign(body, {
-        full_name: fullName,
-        title,
-        company,
-        location,
-        email,
-        profile_url: profileUrl,
-      });
+      Object.assign(body, contactDetails);
     }
     if (action === "view") {
-      Object.assign(body, {
-        full_name: fullName,
-        profile_url: profileUrl,
-      });
+      Object.assign(body, { contact_id: contactId, ...contactDetails });
     }
     if (action === "update") {
-      Object.assign(body, {
-        contact_id: contactId,
-        title,
-        company,
-        location,
-        email,
-      });
+      Object.assign(body, { contact_id: contactId, ...contactDetails });
     }
     if (action === "email") {
       Object.assign(body, {
