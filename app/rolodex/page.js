@@ -34,7 +34,7 @@ export default function Rolodex() {
       Object.assign(body, contactDetails);
     }
     if (action === "view") {
-      Object.assign(body, { contact_id: contactId, ...contactDetails });
+      Object.assign(body, contactDetails);
     }
     if (action === "update") {
       Object.assign(body, { contact_id: contactId, ...contactDetails });
