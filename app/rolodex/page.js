@@ -10,7 +10,6 @@ export default function Rolodex() {
   const [location, setLocation] = useState("");
   const [email, setEmail] = useState("");
   const [profileUrl, setProfileUrl] = useState("");
-  const [profileId, setProfileId] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState(null);
@@ -31,7 +30,12 @@ export default function Rolodex() {
         location,
         email,
         profile_url: profileUrl,
-        profile_id: profileId,
+      });
+    }
+    if (action === "view") {
+      Object.assign(body, {
+        full_name: fullName,
+        profile_url: profileUrl,
       });
     }
     if (action === "update") {
@@ -102,11 +106,6 @@ export default function Rolodex() {
           value={profileUrl}
           onChange={(e) => setProfileUrl(e.target.value)}
           placeholder="Profile URL"
-        />
-        <input
-          value={profileId}
-          onChange={(e) => setProfileId(e.target.value)}
-          placeholder="Profile ID"
         />
         <input
           value={subject}
