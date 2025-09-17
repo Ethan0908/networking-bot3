@@ -10,7 +10,6 @@ export default function Rolodex() {
   const [location, setLocation] = useState("");
   const [email, setEmail] = useState("");
   const [profileUrl, setProfileUrl] = useState("");
-  const [profileId, setProfileId] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState(null);
@@ -23,25 +22,22 @@ export default function Rolodex() {
     setLoading(true);
     setErr("");
     const body = { action, user_external_id: userId };
+    const contactDetails = {
+      full_name: fullName,
+      title,
+      company,
+      location,
+      email,
+      profile_url: profileUrl,
+    };
     if (action === "create") {
-      Object.assign(body, {
-        full_name: fullName,
-        title,
-        company,
-        location,
-        email,
-        profile_url: profileUrl,
-        profile_id: profileId,
-      });
+      Object.assign(body, contactDetails);
+    }
+    if (action === "view") {
+      Object.assign(body, contactDetails);
     }
     if (action === "update") {
-      Object.assign(body, {
-        contact_id: contactId,
-        title,
-        company,
-        location,
-        email,
-      });
+      Object.assign(body, { contact_id: contactId, ...contactDetails });
     }
     if (action === "email") {
       Object.assign(body, {
@@ -102,11 +98,6 @@ export default function Rolodex() {
           value={profileUrl}
           onChange={(e) => setProfileUrl(e.target.value)}
           placeholder="Profile URL"
-        />
-        <input
-          value={profileId}
-          onChange={(e) => setProfileId(e.target.value)}
-          placeholder="Profile ID"
         />
         <input
           value={subject}
