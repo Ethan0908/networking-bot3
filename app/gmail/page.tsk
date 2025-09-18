@@ -1,7 +1,8 @@
 "use client";
-const CID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
-const REDIRECT = process.env.NEXT_PUBLIC_N8N_CALLBACK_URL!;
-const USER_ID = process.env.NEXT_PUBLIC_USER_ID!; // replace with your auth user id
+
+const CID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_CLIENT_ID";
+const REDIRECT = process.env.NEXT_PUBLIC_N8N_CALLBACK_URL || "https://YOUR-N8N/webhook/oauth/google/callback";
+const USER_ID = process.env.NEXT_PUBLIC_USER_ID || "demo-user"; // swap to your real user id
 
 export default function Page() {
   const params = new URLSearchParams({
@@ -25,7 +26,7 @@ export default function Page() {
         Connect your Gmail
       </a>
       <p style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
-        Redirects to Google, then back to your n8n callback.
+        Redirects to Google, then back to: <code>{REDIRECT}</code>
       </p>
     </main>
   );
