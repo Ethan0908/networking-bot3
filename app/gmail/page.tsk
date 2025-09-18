@@ -1,0 +1,32 @@
+"use client";
+const CID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
+const REDIRECT = process.env.NEXT_PUBLIC_N8N_CALLBACK_URL!;
+const USER_ID = process.env.NEXT_PUBLIC_USER_ID!; // replace with your auth user id
+
+export default function Page() {
+  const params = new URLSearchParams({
+    client_id: CID,
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    access_type: "offline",
+    prompt: "consent",
+    scope: "https://www.googleapis.com/auth/gmail.send",
+    state: USER_ID,
+  });
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+  return (
+    <main style={{ maxWidth: 520, margin: "40px auto", padding: 16 }}>
+      <h1>Connect Gmail</h1>
+      <a
+        href={url}
+        style={{ display: "inline-block", padding: "10px 14px", border: "1px solid #ccc", borderRadius: 8 }}
+      >
+        Connect your Gmail
+      </a>
+      <p style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
+        Redirects to Google, then back to your n8n callback.
+      </p>
+    </main>
+  );
+}
