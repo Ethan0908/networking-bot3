@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 export default function Rolodex() {
-  const [userId, setUserId] = useState("");
+  const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
@@ -15,13 +15,16 @@ export default function Rolodex() {
   const [response, setResponse] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const oauthUrl = username
+    ? `/api/oauth/google/start?username=${encodeURIComponent(username)}`
+    : "/api/oauth/google/start?username=YOUR_USERNAME";
 
   async function onSubmit(e) {
     e.preventDefault();
     const action = e.nativeEvent.submitter?.value;
     setLoading(true);
     setErr("");
-    const body = { action, user_external_id: userId };
+    const body = { action, username };
     const contactDetails = {
       full_name: fullName,
       title,
@@ -64,71 +67,90 @@ export default function Rolodex() {
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "40px auto", padding: 16 }}>
-      <h1>Rolodex</h1>
-      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <input
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="User ID"
-        />
-        <input
-          value={contactId}
-          onChange={(e) => setContactId(e.target.value)}
-          placeholder="Contact ID"
-        />
-        <input
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="Full Name"
-        />
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-        <input
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-          placeholder="Company"
-        />
-        <input
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          placeholder="Location"
-        />
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-        <input
-          value={profileUrl}
-          onChange={(e) => setProfileUrl(e.target.value)}
-          placeholder="Profile URL"
-        />
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Subject"
-        />
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Message"
-        />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button type="submit" value="view" disabled={loading}>
-            {loading ? "Working…" : "View"}
-          </button>
-          <button type="submit" value="create" disabled={loading}>
-            {loading ? "Working…" : "Create"}
-          </button>
-          <button type="submit" value="update" disabled={loading}>
-            {loading ? "Working…" : "Update"}
-          </button>
-          <button type="submit" value="email" disabled={loading}>
-            {loading ? "Working…" : "Email"}
-          </button>
-        </div>
-      </form>
-      {err && <p style={{ color: "red" }}>{err}</p>}
-      {response && (
-        <pre style={{ marginTop: 16 }}>{JSON.stringify(response, null, 2)}</pre>
-      )}
-    </main>
+    <>
+      <a
+        href={oauthUrl}
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 16,
+          backgroundColor: "#1a73e8",
+          color: "white",
+          padding: "10px 16px",
+          borderRadius: 6,
+          textDecoration: "none",
+          fontWeight: 600,
+          boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
+        }}
+      >
+        Connect Gmail
+      </a>
+      <main style={{ maxWidth: 800, margin: "40px auto", padding: 16 }}>
+        <h1>Rolodex</h1>
+        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+          />
+          <input
+            value={contactId}
+            onChange={(e) => setContactId(e.target.value)}
+            placeholder="Contact ID"
+          />
+          <input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Full Name"
+          />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+          <input
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            placeholder="Company"
+          />
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Location"
+          />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
+          <input
+            value={profileUrl}
+            onChange={(e) => setProfileUrl(e.target.value)}
+            placeholder="Profile URL"
+          />
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Subject"
+          />
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Message"
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="submit" value="view" disabled={loading}>
+              {loading ? "Working…" : "View"}
+            </button>
+            <button type="submit" value="create" disabled={loading}>
+              {loading ? "Working…" : "Create"}
+            </button>
+            <button type="submit" value="update" disabled={loading}>
+              {loading ? "Working…" : "Update"}
+            </button>
+            <button type="submit" value="email" disabled={loading}>
+              {loading ? "Working…" : "Email"}
+            </button>
+          </div>
+        </form>
+        {err && <p style={{ color: "red" }}>{err}</p>}
+        {response && (
+          <pre style={{ marginTop: 16 }}>{JSON.stringify(response, null, 2)}</pre>
+        )}
+      </main>
+    </>
   );
 }
 

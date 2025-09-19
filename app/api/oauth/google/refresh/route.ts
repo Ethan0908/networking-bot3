@@ -20,12 +20,12 @@ export async function GET(req: NextRequest) {
   if (req.headers.get("x-internal-key") !== process.env.INTERNAL_API_KEY) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const userId = req.nextUrl.searchParams.get("userId");
-  if (!userId) return NextResponse.json({ error: "missing_userId" }, { status: 400 });
+  const username = req.nextUrl.searchParams.get("username");
+  if (!username) return NextResponse.json({ error: "missing_username" }, { status: 400 });
 
   const row = await pool.query(
     "select refresh_token_enc, google_email from user_gmail_tokens where user_id = $1",
-    [userId]
+    [username]
   );
   if (!row.rowCount) return NextResponse.json({ error: "no_token" }, { status: 404 });
 
