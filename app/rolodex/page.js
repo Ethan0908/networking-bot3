@@ -15,39 +15,81 @@ export default function Rolodex() {
   const [response, setResponse] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
-  const oauthUrl = username
-    ? `/api/oauth/google/start?username=${encodeURIComponent(username)}`
+  const trimmedUsernameForLink = username.trim();
+  const oauthUrl = trimmedUsernameForLink
+    ? `/api/oauth/google/start?username=${encodeURIComponent(trimmedUsernameForLink)}`
     : "/api/oauth/google/start?username=YOUR_USERNAME";
 
   async function onSubmit(e) {
     e.preventDefault();
     const action = e.nativeEvent.submitter?.value;
+    if (!action) {
+      setErr("Unknown action");
+      return;
+    }
     setLoading(true);
     setErr("");
-    const body = { action, username };
-    const contactDetails = {
+    setResponse(null);
+
+    const trimmedUsername = username.trim();
+    const trimmedContactId = contactId.trim();
+    const contactDetailsEntries = Object.entries({
       full_name: fullName,
       title,
       company,
       location,
       email,
       profile_url: profileUrl,
+    })
+      .map(([key, value]) => [key, value.trim?.() ?? value])
+      .filter(([, value]) => Boolean(value));
+    const contactDetails = Object.fromEntries(contactDetailsEntries);
+
+    if (action === "update" || action === "email") {
+      if (!trimmedContactId) {
+        setErr("Contact ID is required for this action.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (action === "view" && !trimmedContactId && contactDetailsEntries.length === 0) {
+      setErr("Provide a contact ID or details to view a contact.");
+      setLoading(false);
+      return;
+    }
+
+    const body = {
+      action,
+      ...(trimmedUsername
+        ? {
+            username: trimmedUsername,
+            user_external_id: trimmedUsername,
+            user_id: trimmedUsername,
+          }
+        : {}),
     };
-    if (action === "create") {
+
+    if (trimmedContactId && action !== "create") {
+      body.contact_id = trimmedContactId;
+    }
+
+    if (action === "create" || action === "view" || action === "update") {
       Object.assign(body, contactDetails);
     }
-    if (action === "view") {
-      Object.assign(body, contactDetails);
-    }
-    if (action === "update") {
-      Object.assign(body, { contact_id: contactId, ...contactDetails });
-    }
+
     if (action === "email") {
-      Object.assign(body, {
-        contact_id: contactId,
-        subject,
-        message,
-      });
+      const trimmedSubject = subject.trim();
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        setErr("Message is required to send an email.");
+        setLoading(false);
+        return;
+      }
+      if (trimmedSubject) {
+        body.subject = trimmedSubject;
+      }
+      body.message = trimmedMessage;
     }
     try {
       const r = await fetch("/api/rolodex", {
@@ -55,9 +97,22 @@ export default function Rolodex() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || "Request failed");
-      setResponse(data);
+      const text = await r.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = text;
+      }
+      if (!r.ok) {
+        const message =
+          (typeof data === "string" && data) ||
+          (data && typeof data === "object" && "error" in data && data.error) ||
+          r.statusText ||
+          "Request failed";
+        throw new Error(message);
+      }
+      setResponse(data ?? { success: true });
     } catch (e) {
       setErr(e.message);
       setResponse(null);
