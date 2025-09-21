@@ -61,13 +61,7 @@ export default function Rolodex() {
 
     const body = {
       action,
-      ...(trimmedUsername
-        ? {
-            username: trimmedUsername,
-            user_external_id: trimmedUsername,
-            user_id: trimmedUsername,
-          }
-        : {}),
+      ...(trimmedUsername ? { username: trimmedUsername } : {}),
     };
 
     if (trimmedContactId && action !== "create") {
