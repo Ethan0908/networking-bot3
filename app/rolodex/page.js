@@ -53,8 +53,8 @@ export default function Rolodex() {
       }
     }
 
-    if (action === "view" && !trimmedContactId && contactDetailsEntries.length === 0) {
-      setErr("Provide a contact ID or details to view a contact.");
+    if (action === "view" && !trimmedUsername) {
+      setErr("Username is required to view a contact.");
       setLoading(false);
       return;
     }
