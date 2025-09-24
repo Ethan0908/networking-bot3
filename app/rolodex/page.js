@@ -64,8 +64,8 @@ export default function Rolodex() {
       ...(trimmedUsername ? { username: trimmedUsername } : {}),
     };
 
-    if (trimmedContactId && action !== "create") {
-      body.contact_id = trimmedContactId;
+    if (trimmedContactId) {
+      body.local_id = trimmedContactId;
     }
 
     if (action === "create" || action === "view" || action === "update") {
