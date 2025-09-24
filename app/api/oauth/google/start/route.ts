@@ -5,7 +5,10 @@ export async function GET(req: NextRequest) {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI!;
   const scope = "https://www.googleapis.com/auth/gmail.send";
   // Replace with your auth/session username
-  const username = req.nextUrl.searchParams.get("username") || "demo-user";
+  const username =
+    req.nextUrl.searchParams.get("username") ||
+    req.nextUrl.searchParams.get("userId") ||
+    "demo-user";
   const state = encodeURIComponent(JSON.stringify({ username }));
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");

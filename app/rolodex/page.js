@@ -17,8 +17,8 @@ export default function Rolodex() {
   const [loading, setLoading] = useState(false);
   const trimmedUsernameForLink = username.trim();
   const oauthUrl = trimmedUsernameForLink
-    ? `/api/oauth/google/start?username=${encodeURIComponent(trimmedUsernameForLink)}`
-    : "/api/oauth/google/start?username=YOUR_USERNAME";
+    ? `/api/oauth/google/start?userId=${encodeURIComponent(trimmedUsernameForLink)}`
+    : "/api/oauth/google/start?userId=YOUR_USER_ID";
 
   async function onSubmit(e) {
     e.preventDefault();
