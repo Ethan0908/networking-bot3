@@ -4,7 +4,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const url = "http://34.71.175.89:5678/webhook/rolodex/save";
+  const configuredUrl = process.env.ROLODEX_WEBHOOK_URL?.trim();
+  const url = configuredUrl || "https://efforts-breathing-vat-tiffany.trycloudflare.com/webhook/rolodex/save";
 
   try {
     const response = await fetch(url, {
