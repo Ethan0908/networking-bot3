@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const code = url.searchParams.get("code");
   const stateRaw = url.searchParams.get("state");
   if (!code || !stateRaw) return NextResponse.json({ error: "bad_request" }, { status: 400 });
-  const { userId } = JSON.parse(decodeURIComponent(stateRaw));
+  const { username } = JSON.parse(decodeURIComponent(stateRaw));
 
   const body = new URLSearchParams({
     code,
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
      on conflict (user_id) do update set google_email = excluded.google_email,
                                           refresh_token_enc = excluded.refresh_token_enc,
                                           updated_at = now()`,
-    [userId, googleEmail, encBuf]
+    [username, googleEmail, encBuf]
   );
 
   return NextResponse.redirect(`/settings?gmail=connected`);
