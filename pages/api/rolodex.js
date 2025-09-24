@@ -4,7 +4,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const url = "http://10.0.0.157:5678/webhook/rolodex/save";
+  const url = "http://rpi5:5678/webhook/rolodex/save";
 
   try {
     const response = await fetch(url, {
