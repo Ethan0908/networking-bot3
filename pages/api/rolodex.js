@@ -5,7 +5,8 @@ export default async function handler(req, res) {
   }
 
   const configuredUrl = process.env.ROLODEX_WEBHOOK_URL?.trim();
-  const url = configuredUrl || "https://efforts-breathing-vat-tiffany.trycloudflare.com/webhook/rolodex/save";
+  const url =
+    configuredUrl || "https://rpi5.tail50ab09.ts.net/webhook/rolodex/save";
 
   try {
     const response = await fetch(url, {
