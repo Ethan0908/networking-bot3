@@ -4,6 +4,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  console.log("N8N_WEBHOOK_URL=", process.env.N8N_WEBHOOK_URL);
   const configuredUrl = process.env.N8N_WEBHOOK_URL?.trim();
   const url =
     configuredUrl || "http://rpi5.tail50ab09.ts.net:5678/webhook/rolodex/save";
