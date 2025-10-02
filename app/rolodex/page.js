@@ -98,8 +98,16 @@ function validateProfileUrl(value) {
   if (!value) {
     return { status: null, message: "" };
   }
-  if (!/^https?:\/\//i.test(value)) {
-    return { status: "error", message: "Add https://" };
+  const trimmed = value.trim();
+  const hasProtocol = /^https?:\/\//i.test(trimmed);
+  try {
+    const candidate = hasProtocol ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(candidate);
+    if (!parsed.hostname) {
+      throw new Error("Invalid host");
+    }
+  } catch {
+    return { status: "error", message: "Please enter a valid URL." };
   }
   return { status: "success", message: "" };
 }
@@ -229,6 +237,8 @@ export default function Rolodex() {
   const [loadingAction, setLoadingAction] = useState(null);
   const [gmailStatus, setGmailStatus] = useState("disconnected");
   const [toasts, setToasts] = useState([]);
+  const [activePage, setActivePage] = useState("create");
+  const [lastAction, setLastAction] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({ email: null, profileUrl: null });
   const [fieldTouched, setFieldTouched] = useState({ email: false, profileUrl: false });
@@ -387,6 +397,7 @@ export default function Rolodex() {
         pushToast("error", "Unknown action");
         return;
       }
+      setLastAction(action);
       setLoadingAction(action);
       resetResponses();
       setUsernameHighlight(false);
@@ -533,6 +544,183 @@ export default function Rolodex() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [gmailStatus, pushToast]);
 
+  const renderContactDetails = () => (
+    <div className="rolodex-form-grid">
+      <div className="field">
+        <label className="field-label" htmlFor="fullName">
+          Full Name
+        </label>
+        <input
+          id="fullName"
+          className="text-input"
+          value={fullName}
+          onChange={(event) => setFullName(event.target.value)}
+          placeholder="Full Name"
+        />
+        <div className="helper-text" />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="title">
+          Title
+        </label>
+        <input
+          id="title"
+          className="text-input"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Title"
+        />
+        <div className="helper-text" />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="company">
+          Company
+        </label>
+        <input
+          id="company"
+          className="text-input"
+          value={company}
+          onChange={(event) => setCompany(event.target.value)}
+          placeholder="Company"
+        />
+        <div className="helper-text" />
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="location">
+          Location
+        </label>
+        <input
+          id="location"
+          className="text-input"
+          value={location}
+          onChange={(event) => setLocation(event.target.value)}
+          placeholder="Location"
+        />
+        <div className="helper-text" />
+      </div>
+
+      <div
+        className={`field${
+          fieldStatus.email === "error"
+            ? " error"
+            : fieldStatus.email === "success"
+            ? " success"
+            : ""
+        }`}
+      >
+        <label className="field-label" htmlFor="email">
+          Email
+        </label>
+        <input
+          id="email"
+          className="text-input"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          onBlur={(event) => handleBlur("email", event.target.value)}
+          onKeyDown={handleEmailKeyDown}
+          placeholder="Email"
+          inputMode="email"
+          autoComplete="email"
+        />
+        <span className="success-indicator">
+          <IconCheck />
+        </span>
+        <div className={`validation-text${fieldErrors.email ? " error" : ""}`}>
+          {fieldErrors.email}
+        </div>
+      </div>
+
+      <div
+        className={`field${
+          fieldStatus.profileUrl === "error"
+            ? " error"
+            : fieldStatus.profileUrl === "success"
+            ? " success"
+            : ""
+        }`}
+      >
+        <label className="field-label" htmlFor="profileUrl">
+          Profile URL
+        </label>
+        <input
+          id="profileUrl"
+          className="text-input"
+          value={profileUrl}
+          onChange={(event) => setProfileUrl(event.target.value)}
+          onBlur={(event) => handleBlur("profileUrl", event.target.value)}
+          placeholder="Profile URL"
+          inputMode="url"
+        />
+        <span className="success-indicator">
+          <IconCheck />
+        </span>
+        <div className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}>
+          {fieldErrors.profileUrl}
+        </div>
+      </div>
+    </div>
+  );
+
+  const tabs = [
+    { id: "create", label: "Create" },
+    { id: "view", label: "View" },
+    { id: "update", label: "Update" },
+    { id: "email", label: "Email" },
+  ];
+
+  const viewRecords = useMemo(() => {
+    if (lastAction !== "view" || !response) {
+      return [];
+    }
+    const records = Array.isArray(response) ? response : [response];
+    return records.filter((record) => record && typeof record === "object");
+  }, [lastAction, response]);
+
+  const showJsonResponse = lastAction && lastAction !== "view" && response;
+
+  const emptyMessageMap = {
+    create: "Fill in contact details to create a new record.",
+    view: "Load a contact to preview their profile information.",
+    update: "Update fields above and save your changes.",
+    email: "Draft a message to send to the selected contact.",
+  };
+
+  const sampleViewRecord = useMemo(
+    () => ({
+      local_id: 1,
+      full_name: "Ethan Wang",
+      title: "Analyst",
+      company: "reddit",
+      location: "nyc",
+      profile_url: "https://www.linkedin.com",
+      email: "ethan@gmail.com",
+      last_updated: "2025-10-02T08:11:55.857Z",
+    }),
+    []
+  );
+
+  const resolvedViewRecords = useMemo(() => {
+    if (viewRecords.length > 0) {
+      return viewRecords;
+    }
+    if (activePage === "view" && !errorMessage) {
+      return [sampleViewRecord];
+    }
+    return [];
+  }, [activePage, errorMessage, sampleViewRecord, viewRecords]);
+
+  const isSampleView = viewRecords.length === 0 && resolvedViewRecords.length > 0;
+
+  const formatProfileHref = (value) => {
+    if (!value || typeof value !== "string") {
+      return null;
+    }
+    return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  };
+
   return (
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -563,248 +751,189 @@ export default function Rolodex() {
           </button>
         </header>
 
-        <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-          <div className="rolodex-form-grid">
-            <div className={`field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <input
-                id="username"
-                className="text-input"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Username"
-                autoComplete="off"
-              />
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Use both to update an existing contact."}
-              </div>
+        <div className="context-grid" role="group" aria-label="Contact context">
+          <div className={`field${usernameHighlight ? " error" : ""}`}>
+            <label className="field-label" htmlFor="username">
+              Username
+            </label>
+            <input
+              id="username"
+              className="text-input"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Username"
+              autoComplete="off"
+            />
+            <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+              {usernameHighlight
+                ? "Username is required to view a contact."
+                : "Used to look up contacts across every tab."}
             </div>
+          </div>
 
-            <div className={`field${contactHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="contactId">
-                Contact ID
-              </label>
-              <input
-                id="contactId"
-                className="text-input"
-                value={contactId}
-                onChange={(event) => setContactId(event.target.value)}
-                placeholder="Contact ID"
-                autoComplete="off"
-              />
-              {contactId.trim() && (
-                <button
-                  type="button"
-                  className="copy-button"
-                  onClick={handleCopyContactId}
-                  aria-label="Copy contact ID"
+          <div className={`field${contactHighlight ? " error" : ""}`}>
+            <label className="field-label" htmlFor="contactId">
+              Contact ID
+            </label>
+            <input
+              id="contactId"
+              className="text-input"
+              value={contactId}
+              onChange={(event) => setContactId(event.target.value)}
+              placeholder="Contact ID"
+              autoComplete="off"
+            />
+            {contactId.trim() && (
+              <button
+                type="button"
+                className="copy-button"
+                onClick={handleCopyContactId}
+                aria-label="Copy contact ID"
+              >
+                <IconCopy />
+              </button>
+            )}
+            <div className={`helper-text${contactHighlight ? " error" : ""}`}>
+              {contactHighlight
+                ? "Contact ID is required for this action."
+                : "Needed for updating or emailing a contact."}
+            </div>
+          </div>
+        </div>
+
+        <nav className="rolodex-tabs" role="tablist" aria-label="Rolodex sections">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`${tab.id}-tab`}
+              aria-controls={`${tab.id}-panel`}
+              aria-selected={activePage === tab.id}
+              className={`tab-button${activePage === tab.id ? " active" : ""}`}
+              onClick={() => setActivePage(tab.id)}
+              tabIndex={activePage === tab.id ? 0 : -1}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="tab-panel">
+          {activePage === "create" && (
+            <div role="tabpanel" id="create-panel" aria-labelledby="create-tab">
+              <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
+                {renderContactDetails()}
+                <div className="action-row">
+                  <button
+                    type="submit"
+                    value="create"
+                  className="button"
+                  disabled={disableSubmit}
+                  aria-busy={loadingAction === "create"}
                 >
-                  <IconCopy />
+                  {loadingAction === "create" ? <IconLoader /> : null}
+                  {loadingAction === "create" ? "Creating…" : "Create"}
                 </button>
-              )}
-              <div className={`helper-text${contactHighlight ? " error" : ""}`}>
-                {contactHighlight
-                  ? "Contact ID is required for this action."
-                  : "Use both to update an existing contact."}
               </div>
+              </form>
             </div>
+          )}
 
-            <div className="field">
-              <label className="field-label" htmlFor="fullName">
-                Full Name
-              </label>
-              <input
-                id="fullName"
-                className="text-input"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Full Name"
-              />
-              <div className="helper-text" />
+          {activePage === "view" && (
+            <div role="tabpanel" id="view-panel" aria-labelledby="view-tab">
+              <form className="simple-form" onSubmit={handleSubmit} noValidate>
+                <p className="view-helper">Use the username above to load a contact.</p>
+                <div className="action-row">
+                  <button
+                    type="submit"
+                    value="view"
+                    className="button secondary"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "view"}
+                  >
+                    {loadingAction === "view" ? <IconLoader /> : null}
+                    {loadingAction === "view" ? "Viewing…" : "View"}
+                  </button>
+                </div>
+              </form>
             </div>
+          )}
 
-            <div className="field">
-              <label className="field-label" htmlFor="title">
-                Title
-              </label>
-              <input
-                id="title"
-                className="text-input"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Title"
-              />
-              <div className="helper-text" />
+          {activePage === "update" && (
+            <div role="tabpanel" id="update-panel" aria-labelledby="update-tab">
+              <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
+                {renderContactDetails()}
+                <div className="action-row">
+                  <button
+                    type="submit"
+                    value="update"
+                    className="button secondary"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "update"}
+                  >
+                    {loadingAction === "update" ? <IconLoader /> : null}
+                    {loadingAction === "update" ? "Updating…" : "Update"}
+                  </button>
+                </div>
+              </form>
             </div>
+          )}
 
-            <div className="field">
-              <label className="field-label" htmlFor="company">
-                Company
-              </label>
-              <input
-                id="company"
-                className="text-input"
-                value={company}
-                onChange={(event) => setCompany(event.target.value)}
-                placeholder="Company"
-              />
-              <div className="helper-text" />
+          {activePage === "email" && (
+            <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
+              <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
+                <div className="email-form-grid">
+                  <div className="field">
+                    <label className="field-label" htmlFor="subject">
+                      Subject
+                    </label>
+                    <input
+                      id="subject"
+                      className="text-input"
+                      value={subject}
+                      onChange={(event) => setSubject(event.target.value)}
+                      onKeyDown={handleSubjectKeyDown}
+                      placeholder="Subject"
+                    />
+                    <div className="helper-text" />
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="message">
+                      Message
+                    </label>
+                    <textarea
+                      id="message"
+                      className="text-area"
+                      value={message}
+                      onChange={(event) => setMessage(event.target.value)}
+                      onKeyDown={handleMessageKeyDown}
+                      placeholder="Message"
+                      rows={6}
+                    />
+                    <div className="helper-text">
+                      Press ⌘/Ctrl + Enter to send.
+                    </div>
+                  </div>
+                </div>
+                <div className="action-row">
+                  <button
+                    ref={emailButtonRef}
+                    type="submit"
+                    value="email"
+                    className="button ghost"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "email"}
+                  >
+                    {loadingAction === "email" ? <IconLoader /> : null}
+                    {loadingAction === "email" ? "Sending…" : "Email"}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="location">
-                Location
-              </label>
-              <input
-                id="location"
-                className="text-input"
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="Location"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div
-              className={`field${
-                fieldStatus.email === "error"
-                  ? " error"
-                  : fieldStatus.email === "success"
-                  ? " success"
-                  : ""
-              }`}
-            >
-              <label className="field-label" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                className="text-input"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                onBlur={(event) => handleBlur("email", event.target.value)}
-                onKeyDown={handleEmailKeyDown}
-                placeholder="Email"
-                inputMode="email"
-                autoComplete="email"
-              />
-              <span className="success-indicator">
-                <IconCheck />
-              </span>
-              <div className={`validation-text${fieldErrors.email ? " error" : ""}`}>
-                {fieldErrors.email}
-              </div>
-            </div>
-
-            <div
-              className={`field${
-                fieldStatus.profileUrl === "error"
-                  ? " error"
-                  : fieldStatus.profileUrl === "success"
-                  ? " success"
-                  : ""
-              }`}
-            >
-              <label className="field-label" htmlFor="profileUrl">
-                Profile URL
-              </label>
-              <input
-                id="profileUrl"
-                className="text-input"
-                value={profileUrl}
-                onChange={(event) => setProfileUrl(event.target.value)}
-                onBlur={(event) => handleBlur("profileUrl", event.target.value)}
-                placeholder="Profile URL"
-                inputMode="url"
-              />
-              <span className="success-indicator">
-                <IconCheck />
-              </span>
-              <div className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}>
-                {fieldErrors.profileUrl}
-              </div>
-            </div>
-
-            <div className="field double">
-              <label className="field-label" htmlFor="subject">
-                Subject
-              </label>
-              <input
-                id="subject"
-                className="text-input"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                onKeyDown={handleSubjectKeyDown}
-                placeholder="Subject"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div className="field double">
-              <label className="field-label" htmlFor="message">
-                Message
-              </label>
-              <textarea
-                id="message"
-                className="text-area"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={handleMessageKeyDown}
-                placeholder="Message"
-                rows={6}
-              />
-              <div className="helper-text" />
-            </div>
-          </div>
-
-          <div className="action-row">
-            <button
-              type="submit"
-              value="create"
-              className="button"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "create"}
-            >
-              {loadingAction === "create" ? <IconLoader /> : null}
-              {loadingAction === "create" ? "Creating…" : "Create"}
-            </button>
-            <button
-              type="submit"
-              value="update"
-              className="button secondary"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "update"}
-            >
-              {loadingAction === "update" ? <IconLoader /> : null}
-              {loadingAction === "update" ? "Updating…" : "Update"}
-            </button>
-            <button
-              type="submit"
-              value="view"
-              className="button secondary"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "view"}
-            >
-              {loadingAction === "view" ? <IconLoader /> : null}
-              {loadingAction === "view" ? "Viewing…" : "View"}
-            </button>
-            <button
-              ref={emailButtonRef}
-              type="submit"
-              value="email"
-              className="button ghost"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "email"}
-            >
-              {loadingAction === "email" ? <IconLoader /> : null}
-              {loadingAction === "email" ? "Sending…" : "Email"}
-            </button>
-          </div>
-        </form>
+          )}
+        </div>
 
         <div className="result-area">
           {errorMessage && (
@@ -812,20 +941,72 @@ export default function Rolodex() {
               {errorMessage}
             </div>
           )}
-          {inlineSummary && !errorMessage && (
+
+          {inlineSummary && !errorMessage && lastAction === "view" && (
             <div className="inline-result" aria-live="polite">
               {inlineSummary}
             </div>
           )}
-          {response && (
+
+          {resolvedViewRecords.length > 0 && (
+            <div className="table-scroll">
+              <table className="view-table">
+                {isSampleView && (
+                  <caption className="view-table-caption">
+                    Sample contact shown. Load a contact to see live data.
+                  </caption>
+                )}
+                <thead>
+                  <tr>
+                    <th scope="col">Local ID</th>
+                    <th scope="col">Full Name</th>
+                    <th scope="col">Title</th>
+                    <th scope="col">Company</th>
+                    <th scope="col">Location</th>
+                    <th scope="col">Profile URL</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resolvedViewRecords.map((record, index) => {
+                    const key = record.local_id ?? index;
+                    const profileLink = formatProfileHref(record.profile_url ?? record.profileUrl);
+                    return (
+                      <tr key={key}>
+                        <td>{record.local_id ?? "—"}</td>
+                        <td>{record.full_name ?? record.fullName ?? "—"}</td>
+                        <td>{record.title ?? "—"}</td>
+                        <td>{record.company ?? "—"}</td>
+                        <td>{record.location ?? "—"}</td>
+                        <td>
+                          {profileLink ? (
+                            <a href={profileLink} target="_blank" rel="noreferrer">
+                              {record.profile_url ?? record.profileUrl}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td>{record.email ?? "—"}</td>
+                        <td>{record.last_updated ?? record.updated_at ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {showJsonResponse && (
             <pre className="response-view" aria-live="polite">
               {JSON.stringify(response, null, 2)}
             </pre>
           )}
         </div>
 
-        {!response && !inlineSummary && !errorMessage && (
-          <div className="empty-footer">No contact selected.</div>
+        {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
+          <div className="empty-footer">{emptyMessageMap[activePage]}</div>
         )}
       </section>
     </div>
