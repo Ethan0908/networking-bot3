@@ -105,6 +105,8 @@ const LOADING_LABELS = {
   email: "Sending…",
 };
 
+const THEME_STORAGE_KEY = "rolodex.theme";
+
 const VIEW_COLUMNS = [
   { key: "local_id", label: "Local ID" },
   { key: "full_name", label: "Full Name" },
@@ -114,6 +116,7 @@ const VIEW_COLUMNS = [
   { key: "profile_url", label: "Profile URL" },
   { key: "email", label: "Email" },
   { key: "last_updated", label: "Last Updated" },
+  { key: "recency", label: "Recency" },
 ];
 
 function validateEmail(value) {
@@ -205,6 +208,29 @@ function formatRelativeTime(value) {
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays > 0 ? "ago" : "from now"}`;
 }
 
+function getRecencyStatus(value) {
+  if (!value) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (!Number.isFinite(diffMs)) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays <= 31) {
+    return { label: "Within 1 month", tone: "fresh" };
+  }
+  if (diffDays <= 93) {
+    return { label: "1-3 months", tone: "warm" };
+  }
+  return { label: "3+ months", tone: "stale" };
+}
+
 function IconInfo(props) {
   return (
     <svg
@@ -272,6 +298,7 @@ function IconAlert(props) {
 
 export default function Rolodex() {
   const [activeTab, setActiveTab] = useState("create");
+  const [theme, setTheme] = useState("light");
   const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -290,6 +317,10 @@ export default function Rolodex() {
   const [gmailStatus, setGmailStatus] = useState("disconnected");
   const [gmailUsername, setGmailUsername] = useState("");
   const [activeContactEmail, setActiveContactEmail] = useState("");
+  const [emailContacts, setEmailContacts] = useState([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [recipientError, setRecipientError] = useState("");
   const [toasts, setToasts] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({ email: null, profileUrl: null });
@@ -305,6 +336,36 @@ export default function Rolodex() {
     : "/api/oauth/google/start?username=YOUR_USER_ID";
 
   const GMAIL_STORAGE_KEY = "rolodex.gmailUsername";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === "dark" || storedTheme === "light") {
+      setTheme(storedTheme);
+      return;
+    }
+    const prefersDark =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (prefersDark) {
+      setTheme("dark");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.remove("theme-dark", "theme-light");
+    const nextClass = theme === "dark" ? "theme-dark" : "theme-light";
+    root.classList.add(nextClass);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -391,6 +452,12 @@ export default function Rolodex() {
     setContactHighlight(false);
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== "email" && recipientError) {
+      setRecipientError("");
+    }
+  }, [activeTab, recipientError]);
+
   const handleCopyContactId = useCallback(() => {
     if (!contactId.trim()) {
       return;
@@ -408,6 +475,119 @@ export default function Rolodex() {
         pushToast("error", "Unable to copy contact ID.");
       });
   }, [contactId, pushToast]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }, []);
+
+  const handleLoadContacts = useCallback(async () => {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      pushToast("error", "Enter a username to load contacts.");
+      setUsernameHighlight(true);
+      return;
+    }
+    setRecipientError("");
+    setContactsLoading(true);
+    try {
+      const res = await fetch("/api/rolodex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "view", username: trimmedUsername }),
+      });
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = text;
+      }
+      if (!res.ok) {
+        const messageText =
+          (typeof data === "string" && data) ||
+          (data && typeof data === "object" && "error" in data && data.error) ||
+          res.statusText ||
+          "Failed to load contacts.";
+        throw new Error(messageText);
+      }
+      const records = Array.isArray(data) ? data : data ? [data] : [];
+      const contactList = records.filter((record) => record && typeof record === "object");
+      setEmailContacts(contactList);
+      if (contactList.length === 0) {
+        setSelectedContactId("");
+        setActiveContactEmail("");
+        pushToast("info", "No contacts found for that user.");
+      } else {
+        const firstWithEmail = contactList.find(
+          (record) => typeof record?.email === "string" && record.email.trim()
+        );
+        if (firstWithEmail) {
+          const resolvedId =
+            firstWithEmail.local_id !== undefined && firstWithEmail.local_id !== null
+              ? String(firstWithEmail.local_id)
+              : "";
+          setSelectedContactId(resolvedId);
+          setActiveContactEmail(firstWithEmail.email);
+        } else {
+          setSelectedContactId("");
+          setActiveContactEmail("");
+        }
+        pushToast(
+          "success",
+          `Loaded ${contactList.length} contact${contactList.length === 1 ? "" : "s"}.`
+        );
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Failed to load contacts.";
+      pushToast("error", messageText);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [pushToast, setActiveContactEmail, setEmailContacts, setSelectedContactId, setContactsLoading, setUsernameHighlight, username]);
+
+  const contactOptions = useMemo(() => {
+    const options = [];
+    for (const record of emailContacts) {
+      if (!record || typeof record !== "object") {
+        continue;
+      }
+      const emailValue =
+        typeof record.email === "string" ? record.email.trim() : "";
+      if (!emailValue) {
+        continue;
+      }
+      const id =
+        record.local_id !== undefined && record.local_id !== null
+          ? String(record.local_id)
+          : "";
+      if (!id) {
+        continue;
+      }
+      const name =
+        typeof record.full_name === "string" && record.full_name.trim()
+          ? record.full_name.trim()
+          : `Contact #${id}`;
+      options.push({ id, email: emailValue, label: `${name} — ${emailValue}` });
+    }
+    return options;
+  }, [emailContacts]);
+
+  const contactLookup = useMemo(() => {
+    const map = new Map();
+    for (const option of contactOptions) {
+      map.set(option.id, option.email);
+    }
+    return map;
+  }, [contactOptions]);
+
+  useEffect(() => {
+    if (!selectedContactId) {
+      return;
+    }
+    if (!contactLookup.has(selectedContactId)) {
+      setSelectedContactId("");
+    }
+  }, [contactLookup, selectedContactId]);
 
   const verifyGmailStatus = useCallback(
     async (targetUsername, { silent = false, allowDisconnectToast = false } = {}) => {
@@ -533,6 +713,25 @@ export default function Rolodex() {
 
   const handleEmailKeyDown = handleSubjectKeyDown;
 
+  const handleRecipientSelect = useCallback(
+    (event) => {
+      const value = event.target.value;
+      setSelectedContactId(value);
+      setRecipientError("");
+      if (!value) {
+        setActiveContactEmail("");
+        setContactId("");
+        return;
+      }
+      const emailValue = contactLookup.get(value);
+      if (emailValue) {
+        setActiveContactEmail(emailValue);
+      }
+      setContactId(value);
+    },
+    [contactLookup]
+  );
+
   const handleMessageKeyDown = useCallback(
     (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -594,32 +793,37 @@ export default function Rolodex() {
       }
 
       if (action === "email") {
-        if (!trimmedUsernameValue) {
-          const messageText = "Username is required to send an email.";
-          setErrorMessage(messageText);
-          pushToast("error", messageText);
-          setUsernameHighlight(true);
-          setLoadingAction(null);
-          return;
-        }
-        if (!trimmedContactId) {
-          const message = "Select a contact before sending an email.";
-          setErrorMessage(message);
-          pushToast("error", message);
-          setLoadingAction(null);
-          return;
-        }
-        if (!activeContactEmail) {
-          const message = "Selected contact is missing an email address.";
-          setErrorMessage(message);
-          pushToast("error", message);
-          setLoadingAction(null);
-          return;
-        }
+        setRecipientError("");
         if (gmailStatus !== "connected") {
           const message = "Connect Gmail before sending an email.";
           setErrorMessage(message);
           pushToast("error", message);
+          setLoadingAction(null);
+          return;
+        }
+        const trimmedRecipient = activeContactEmail.trim();
+        if (!trimmedRecipient) {
+          const messageText = "Recipient email is required.";
+          setRecipientError(messageText);
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setLoadingAction(null);
+          return;
+        }
+        if (validateEmail(trimmedRecipient).status === "error") {
+          const messageText = "Enter a valid recipient email.";
+          setRecipientError(messageText);
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setLoadingAction(null);
+          return;
+        }
+        const resolvedUsername = (gmailUsername && gmailUsername.trim()) || trimmedUsernameValue;
+        if (!resolvedUsername) {
+          const messageText = "Connect Gmail with your username before sending.";
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setUsernameHighlight(true);
           setLoadingAction(null);
           return;
         }
@@ -651,12 +855,15 @@ export default function Rolodex() {
         setLastAction(action);
 
         const emailPayload = {
-          username: trimmedUsernameValue,
-          to: activeContactEmail,
+          username: resolvedUsername,
+          to: activeContactEmail.trim(),
           message: trimmedMessage,
           ...(trimmedSubject ? { subject: trimmedSubject } : {}),
-          contactId: trimmedContactId,
         };
+        const resolvedContactId = selectedContactId || trimmedContactId;
+        if (resolvedContactId) {
+          emailPayload.contactId = resolvedContactId;
+        }
         try {
           const r = await fetch("/api/gmail/send", {
             method: "POST",
@@ -727,12 +934,38 @@ export default function Rolodex() {
           } else {
             const record = Array.isArray(data) ? data[0] : data;
             if (record && record.local_id != null) {
-              setContactId(String(record.local_id));
+              const idString = String(record.local_id);
+              setContactId(idString);
+              setSelectedContactId(idString);
+            } else {
+              setSelectedContactId("");
             }
             if (record && typeof record.email === "string") {
               setActiveContactEmail(record.email);
             } else {
               setActiveContactEmail("");
+            }
+            if (record && typeof record === "object") {
+              setEmailContacts((prev) => {
+                const recordId = record.local_id;
+                if (recordId === undefined || recordId === null) {
+                  return prev;
+                }
+                const recordIdString = String(recordId);
+                const exists = prev.some((item) => {
+                  if (!item || typeof item !== "object") return false;
+                  if (item.local_id === undefined || item.local_id === null) return false;
+                  return String(item.local_id) === recordIdString;
+                });
+                if (exists) {
+                  return prev.map((item) => {
+                    if (!item || typeof item !== "object") return item;
+                    if (item.local_id === undefined || item.local_id === null) return item;
+                    return String(item.local_id) === recordIdString ? { ...item, ...record } : item;
+                  });
+                }
+                return [...prev, record];
+              });
             }
             setInlineSummary(formatSummary(record));
             pushToast("success", "Contact loaded.");
@@ -751,6 +984,7 @@ export default function Rolodex() {
       activeContactEmail,
       activeTab,
       contactId,
+      gmailUsername,
       email,
       fullName,
       gmailStatus,
@@ -759,6 +993,7 @@ export default function Rolodex() {
       profileUrl,
       pushToast,
       resetResponses,
+      selectedContactId,
       subject,
       title,
       username,
@@ -771,6 +1006,8 @@ export default function Rolodex() {
     return "Connect Gmail";
   }, [gmailStatus]);
 
+  const themeLabel = useMemo(() => (theme === "dark" ? "Light Mode" : "Dark Mode"), [theme]);
+
   const usernameHelperText = useMemo(() => {
     if (activeTab === "view") {
       return "Enter a username to load contacts.";
@@ -781,10 +1018,13 @@ export default function Rolodex() {
     if (activeTab === "create") {
       return "Optional: associate the contact with a user.";
     }
-    return contactId.trim()
-      ? `Email will be sent to contact #${contactId}.`
-      : "View a contact first to load their details.";
-  }, [activeTab, contactId]);
+    if (activeTab === "email") {
+      return gmailStatus === "connected"
+        ? "Optional: load contacts for this user."
+        : "Enter your username to connect Gmail or load contacts.";
+    }
+    return "";
+  }, [activeTab, contactId, gmailStatus]);
 
   const contactHelperText = useMemo(() => {
     if (activeTab === "update") {
@@ -815,6 +1055,15 @@ export default function Rolodex() {
 
   return (
     <div className="rolodex-page">
+      <button
+        type="button"
+        className="theme-toggle"
+        onClick={toggleTheme}
+        aria-pressed={theme === "dark"}
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {themeLabel}
+      </button>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <section className="rolodex-card" aria-labelledby="rolodex-heading">
         <header className="rolodex-header">
@@ -1060,11 +1309,90 @@ export default function Rolodex() {
           {activeTab === "email" && (
             <>
               <div className="email-context" role="note">
-                {contactId.trim()
-                  ? `Emailing contact #${contactId}.`
-                  : "View a contact first to load their email."}
+                {gmailStatus !== "connected"
+                  ? "Connect Gmail to enable sending."
+                  : activeContactEmail.trim()
+                  ? `Ready to email ${activeContactEmail.trim()}.`
+                  : "Select a contact or enter an email address to send."}
               </div>
               <div className="rolodex-form-grid email">
+                <div className={`field${usernameHighlight ? " error" : ""}`}>
+                  <label className="field-label" htmlFor="username">
+                    Username
+                  </label>
+                  <div className="input-with-action">
+                    <input
+                      id="username"
+                      className="text-input"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder="Username"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="button secondary compact"
+                      onClick={handleLoadContacts}
+                      disabled={contactsLoading}
+                    >
+                      {contactsLoading ? <IconLoader /> : null}
+                      {contactsLoading ? "Loading…" : "Load"}
+                    </button>
+                  </div>
+                  <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                    {usernameHighlight ? "Username is required." : usernameHelperText}
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="recipientSelect">
+                    Contact
+                  </label>
+                  <select
+                    id="recipientSelect"
+                    className="select-input"
+                    value={selectedContactId}
+                    onChange={handleRecipientSelect}
+                    disabled={contactOptions.length === 0}
+                  >
+                    <option value="">Select a contact</option>
+                    {contactOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="helper-text">
+                    {contactOptions.length === 0
+                      ? "Load contacts to populate this list."
+                      : "Selecting a contact fills the email field."}
+                  </div>
+                </div>
+
+                <div className={`field${recipientError ? " error" : ""}`}>
+                  <label className="field-label" htmlFor="recipientEmail">
+                    Recipient Email
+                  </label>
+                  <input
+                    id="recipientEmail"
+                    className="text-input"
+                    value={activeContactEmail}
+                    onChange={(event) => {
+                      setActiveContactEmail(event.target.value);
+                      setRecipientError("");
+                      if (selectedContactId) {
+                        setSelectedContactId("");
+                      }
+                    }}
+                    placeholder="name@example.com"
+                    inputMode="email"
+                    autoComplete="email"
+                  />
+                  <div className={`helper-text${recipientError ? " error" : ""}`}>
+                    {recipientError || "Required: Gmail recipient address."}
+                  </div>
+                </div>
+
                 <div className="field">
                   <label className="field-label" htmlFor="subject">
                     Subject
@@ -1080,7 +1408,7 @@ export default function Rolodex() {
                   <div className="helper-text" />
                 </div>
 
-                <div className="field">
+                <div className="field full-width">
                   <label className="field-label" htmlFor="message">
                     Message
                   </label>
@@ -1146,6 +1474,14 @@ export default function Rolodex() {
                     <tr key={record.local_id ?? index}>
                       {VIEW_COLUMNS.map((column) => {
                         const rawValue = record?.[column.key];
+                        if (column.key === "recency") {
+                          const { label, tone } = getRecencyStatus(record?.last_updated);
+                          return (
+                            <td key={column.key} data-label={column.label}>
+                              <span className={`recency-badge ${tone}`}>{label}</span>
+                            </td>
+                          );
+                        }
                         if (column.key === "profile_url") {
                           if (!rawValue) {
                             return (
