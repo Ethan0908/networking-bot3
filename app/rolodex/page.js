@@ -84,6 +84,41 @@ const TOAST_TIMEOUT = 4500;
 
 const EMAIL_REGEX = /.+@.+\..+/;
 
+const TAB_ITEMS = [
+  { id: "create", label: "Create" },
+  { id: "view", label: "View" },
+  { id: "update", label: "Update" },
+  { id: "email", label: "Email" },
+];
+
+const ACTION_LABELS = {
+  create: "Create",
+  view: "View",
+  update: "Update",
+  email: "Send Email",
+};
+
+const LOADING_LABELS = {
+  create: "Creating…",
+  view: "Viewing…",
+  update: "Updating…",
+  email: "Sending…",
+};
+
+const THEME_STORAGE_KEY = "rolodex.theme";
+
+const VIEW_COLUMNS = [
+  { key: "local_id", label: "Local ID" },
+  { key: "full_name", label: "Full Name" },
+  { key: "title", label: "Title" },
+  { key: "company", label: "Company" },
+  { key: "location", label: "Location" },
+  { key: "profile_url", label: "Profile URL" },
+  { key: "email", label: "Email" },
+  { key: "last_updated", label: "Last Updated" },
+  { key: "recency", label: "Recency" },
+];
+
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -98,10 +133,36 @@ function validateProfileUrl(value) {
   if (!value) {
     return { status: null, message: "" };
   }
-  if (!/^https?:\/\//i.test(value)) {
-    return { status: "error", message: "Add https://" };
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { status: null, message: "" };
+  }
+  if (/\s/.test(trimmed)) {
+    return { status: "error", message: "Enter a valid URL (https optional)." };
+  }
+  try {
+    // Allow URLs without protocol by defaulting to https during validation.
+    // The constructed URL is only used for validation purposes.
+    const candidate = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+    new URL(candidate);
+  } catch {
+    return { status: "error", message: "Enter a valid URL (https optional)." };
   }
   return { status: "success", message: "" };
+}
+
+function normalizeProfileHref(value) {
+  if (!value) return "";
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
 }
 
 function formatSummary(record) {
@@ -145,6 +206,29 @@ function formatRelativeTime(value) {
     return `${Math.abs(diffHours)} hour${Math.abs(diffHours) === 1 ? "" : "s"} ${diffHours > 0 ? "ago" : "from now"}`;
   }
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays > 0 ? "ago" : "from now"}`;
+}
+
+function getRecencyStatus(value) {
+  if (!value) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (!Number.isFinite(diffMs)) {
+    return { label: "Unknown", tone: "unknown" };
+  }
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  if (diffDays <= 31) {
+    return { label: "Within 1 month", tone: "fresh" };
+  }
+  if (diffDays <= 93) {
+    return { label: "1-3 months", tone: "warm" };
+  }
+  return { label: "3+ months", tone: "stale" };
 }
 
 function IconInfo(props) {
@@ -213,6 +297,8 @@ function IconAlert(props) {
 }
 
 export default function Rolodex() {
+  const [activeTab, setActiveTab] = useState("create");
+  const [theme, setTheme] = useState("light");
   const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -223,11 +309,18 @@ export default function Rolodex() {
   const [profileUrl, setProfileUrl] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [lastAction, setLastAction] = useState(null);
   const [response, setResponse] = useState(null);
   const [inlineSummary, setInlineSummary] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState(null);
   const [gmailStatus, setGmailStatus] = useState("disconnected");
+  const [gmailUsername, setGmailUsername] = useState("");
+  const [activeContactEmail, setActiveContactEmail] = useState("");
+  const [emailContacts, setEmailContacts] = useState([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [recipientError, setRecipientError] = useState("");
   const [toasts, setToasts] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({ email: null, profileUrl: null });
@@ -239,8 +332,40 @@ export default function Rolodex() {
 
   const trimmedUsernameForLink = username.trim();
   const oauthUrl = trimmedUsernameForLink
-    ? `/api/oauth/google/start?userId=${encodeURIComponent(trimmedUsernameForLink)}`
-    : "/api/oauth/google/start?userId=YOUR_USER_ID";
+    ? `/api/oauth/google/start?username=${encodeURIComponent(trimmedUsernameForLink)}`
+    : "/api/oauth/google/start?username=YOUR_USER_ID";
+
+  const GMAIL_STORAGE_KEY = "rolodex.gmailUsername";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === "dark" || storedTheme === "light") {
+      setTheme(storedTheme);
+      return;
+    }
+    const prefersDark =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (prefersDark) {
+      setTheme("dark");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.remove("theme-dark", "theme-light");
+    const nextClass = theme === "dark" ? "theme-dark" : "theme-light";
+    root.classList.add(nextClass);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -322,6 +447,17 @@ export default function Rolodex() {
     }
   }, [contactHighlight, contactId]);
 
+  useEffect(() => {
+    setUsernameHighlight(false);
+    setContactHighlight(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "email" && recipientError) {
+      setRecipientError("");
+    }
+  }, [activeTab, recipientError]);
+
   const handleCopyContactId = useCallback(() => {
     if (!contactId.trim()) {
       return;
@@ -340,16 +476,233 @@ export default function Rolodex() {
       });
   }, [contactId, pushToast]);
 
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }, []);
+
+  const handleLoadContacts = useCallback(async () => {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      pushToast("error", "Enter a username to load contacts.");
+      setUsernameHighlight(true);
+      return;
+    }
+    setRecipientError("");
+    setContactsLoading(true);
+    try {
+      const res = await fetch("/api/rolodex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "view", username: trimmedUsername }),
+      });
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = text;
+      }
+      if (!res.ok) {
+        const messageText =
+          (typeof data === "string" && data) ||
+          (data && typeof data === "object" && "error" in data && data.error) ||
+          res.statusText ||
+          "Failed to load contacts.";
+        throw new Error(messageText);
+      }
+      const records = Array.isArray(data) ? data : data ? [data] : [];
+      const contactList = records.filter((record) => record && typeof record === "object");
+      setEmailContacts(contactList);
+      if (contactList.length === 0) {
+        setSelectedContactId("");
+        setActiveContactEmail("");
+        pushToast("info", "No contacts found for that user.");
+      } else {
+        const firstWithEmail = contactList.find(
+          (record) => typeof record?.email === "string" && record.email.trim()
+        );
+        if (firstWithEmail) {
+          const resolvedId =
+            firstWithEmail.local_id !== undefined && firstWithEmail.local_id !== null
+              ? String(firstWithEmail.local_id)
+              : "";
+          setSelectedContactId(resolvedId);
+          setActiveContactEmail(firstWithEmail.email);
+        } else {
+          setSelectedContactId("");
+          setActiveContactEmail("");
+        }
+        pushToast(
+          "success",
+          `Loaded ${contactList.length} contact${contactList.length === 1 ? "" : "s"}.`
+        );
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Failed to load contacts.";
+      pushToast("error", messageText);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [pushToast, setActiveContactEmail, setEmailContacts, setSelectedContactId, setContactsLoading, setUsernameHighlight, username]);
+
+  const contactOptions = useMemo(() => {
+    const options = [];
+    for (const record of emailContacts) {
+      if (!record || typeof record !== "object") {
+        continue;
+      }
+      const emailValue =
+        typeof record.email === "string" ? record.email.trim() : "";
+      if (!emailValue) {
+        continue;
+      }
+      const id =
+        record.local_id !== undefined && record.local_id !== null
+          ? String(record.local_id)
+          : "";
+      if (!id) {
+        continue;
+      }
+      const name =
+        typeof record.full_name === "string" && record.full_name.trim()
+          ? record.full_name.trim()
+          : `Contact #${id}`;
+      options.push({ id, email: emailValue, label: `${name} — ${emailValue}` });
+    }
+    return options;
+  }, [emailContacts]);
+
+  const contactLookup = useMemo(() => {
+    const map = new Map();
+    for (const option of contactOptions) {
+      map.set(option.id, option.email);
+    }
+    return map;
+  }, [contactOptions]);
+
+  useEffect(() => {
+    if (!selectedContactId) {
+      return;
+    }
+    if (!contactLookup.has(selectedContactId)) {
+      setSelectedContactId("");
+    }
+  }, [contactLookup, selectedContactId]);
+
+  const verifyGmailStatus = useCallback(
+    async (targetUsername, { silent = false, allowDisconnectToast = false } = {}) => {
+      if (!targetUsername) {
+        setGmailStatus("disconnected");
+        return { connected: false };
+      }
+      try {
+        const res = await fetch(
+          `/api/oauth/google/status?username=${encodeURIComponent(targetUsername)}`,
+          { cache: "no-store" }
+        );
+        if (res.status === 404) {
+          if (!silent && allowDisconnectToast) {
+            pushToast("info", "Gmail connection not found. Please reconnect.");
+          }
+          setGmailStatus("disconnected");
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem(GMAIL_STORAGE_KEY);
+          }
+          return { connected: false };
+        }
+        if (!res.ok) {
+          const message = (await res.text()) || "Unable to verify Gmail status.";
+          throw new Error(message);
+        }
+        const data = await res.json();
+        setGmailStatus("connected");
+        setGmailUsername(targetUsername);
+        if (!silent) {
+          const emailAddress = data?.email;
+          pushToast(
+            "success",
+            emailAddress ? `Gmail connected as ${emailAddress}.` : "Gmail connected."
+          );
+        }
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(GMAIL_STORAGE_KEY, targetUsername);
+        }
+        return { connected: true, details: data };
+      } catch (error) {
+        setGmailStatus("disconnected");
+        if (!silent) {
+          const message =
+            error instanceof Error ? error.message : "Failed to verify Gmail status.";
+          pushToast("error", message);
+        }
+        return { connected: false, error };
+      }
+    },
+    [GMAIL_STORAGE_KEY, pushToast]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedUsername = window.localStorage.getItem(GMAIL_STORAGE_KEY);
+    if (storedUsername) {
+      setGmailUsername(storedUsername);
+      verifyGmailStatus(storedUsername, { silent: true }).catch(() => {
+        /* noop */
+      });
+    }
+  }, [GMAIL_STORAGE_KEY, verifyGmailStatus]);
+
+  useEffect(() => {
+    if (!gmailUsername) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        verifyGmailStatus(gmailUsername, { silent: true }).catch(() => {
+          /* noop */
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [gmailUsername, verifyGmailStatus]);
+
   const handleGmailClick = useCallback(
     (event) => {
       event.preventDefault();
       if (gmailStatus === "connecting") return;
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername) {
+        pushToast("error", "Enter a username before connecting Gmail.");
+        setUsernameHighlight(true);
+        return;
+      }
+      const width = 520;
+      const height = 640;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      const features = `width=${width},height=${height},left=${left},top=${top},status=no,toolbar=no,menubar=no`;
+      const popup = window.open(oauthUrl, "rolodex-gmail-oauth", features);
+      if (!popup) {
+        pushToast("error", "Popup blocked. Allow popups to connect Gmail.");
+        return;
+      }
       setGmailStatus("connecting");
-      setTimeout(() => {
-        window.location.href = oauthUrl;
-      }, 120);
+      setGmailUsername(trimmedUsername);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(GMAIL_STORAGE_KEY, trimmedUsername);
+      }
+      const timer = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(timer);
+          verifyGmailStatus(trimmedUsername, {
+            silent: false,
+            allowDisconnectToast: true,
+          }).catch(() => {
+            /* noop */
+          });
+        }
+      }, 600);
     },
-    [gmailStatus, oauthUrl]
+    [GMAIL_STORAGE_KEY, gmailStatus, oauthUrl, pushToast, username, verifyGmailStatus]
   );
 
   const handleSubjectKeyDown = useCallback((event) => {
@@ -359,6 +712,25 @@ export default function Rolodex() {
   }, []);
 
   const handleEmailKeyDown = handleSubjectKeyDown;
+
+  const handleRecipientSelect = useCallback(
+    (event) => {
+      const value = event.target.value;
+      setSelectedContactId(value);
+      setRecipientError("");
+      if (!value) {
+        setActiveContactEmail("");
+        setContactId("");
+        return;
+      }
+      const emailValue = contactLookup.get(value);
+      if (emailValue) {
+        setActiveContactEmail(emailValue);
+      }
+      setContactId(value);
+    },
+    [contactLookup]
+  );
 
   const handleMessageKeyDown = useCallback(
     (event) => {
@@ -376,17 +748,13 @@ export default function Rolodex() {
     setResponse(null);
     setInlineSummary("");
     setErrorMessage("");
+    setLastAction(null);
   }, []);
 
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault();
-      const action = event.nativeEvent.submitter?.value;
-      if (!action) {
-        setErrorMessage("Unknown action");
-        pushToast("error", "Unknown action");
-        return;
-      }
+      const action = activeTab;
       setLoadingAction(action);
       resetResponses();
       setUsernameHighlight(false);
@@ -406,15 +774,13 @@ export default function Rolodex() {
         .filter(([, value]) => Boolean(value));
       const contactDetails = Object.fromEntries(contactDetailsEntries);
 
-      if (action === "update" || action === "email") {
-        if (!trimmedContactId) {
-          const message = "Contact ID is required for this action.";
-          setErrorMessage(message);
-          pushToast("error", message);
-          setContactHighlight(true);
-          setLoadingAction(null);
-          return;
-        }
+      if (action === "update" && !trimmedContactId) {
+        const message = "Contact ID is required to update a contact.";
+        setErrorMessage(message);
+        pushToast("error", message);
+        setContactHighlight(true);
+        setLoadingAction(null);
+        return;
       }
 
       if (action === "view" && !trimmedUsernameValue) {
@@ -424,6 +790,43 @@ export default function Rolodex() {
         setUsernameHighlight(true);
         setLoadingAction(null);
         return;
+      }
+
+      if (action === "email") {
+        setRecipientError("");
+        if (gmailStatus !== "connected") {
+          const message = "Connect Gmail before sending an email.";
+          setErrorMessage(message);
+          pushToast("error", message);
+          setLoadingAction(null);
+          return;
+        }
+        const trimmedRecipient = activeContactEmail.trim();
+        if (!trimmedRecipient) {
+          const messageText = "Recipient email is required.";
+          setRecipientError(messageText);
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setLoadingAction(null);
+          return;
+        }
+        if (validateEmail(trimmedRecipient).status === "error") {
+          const messageText = "Enter a valid recipient email.";
+          setRecipientError(messageText);
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setLoadingAction(null);
+          return;
+        }
+        const resolvedUsername = (gmailUsername && gmailUsername.trim()) || trimmedUsernameValue;
+        if (!resolvedUsername) {
+          const messageText = "Connect Gmail with your username before sending.";
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setUsernameHighlight(true);
+          setLoadingAction(null);
+          return;
+        }
       }
 
       const body = {
@@ -449,11 +852,54 @@ export default function Rolodex() {
           setLoadingAction(null);
           return;
         }
-        if (trimmedSubject) {
-          body.subject = trimmedSubject;
+        setLastAction(action);
+
+        const emailPayload = {
+          username: resolvedUsername,
+          to: activeContactEmail.trim(),
+          message: trimmedMessage,
+          ...(trimmedSubject ? { subject: trimmedSubject } : {}),
+        };
+        const resolvedContactId = selectedContactId || trimmedContactId;
+        if (resolvedContactId) {
+          emailPayload.contactId = resolvedContactId;
         }
-        body.message = trimmedMessage;
+        try {
+          const r = await fetch("/api/gmail/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(emailPayload),
+          });
+          const text = await r.text();
+          let data;
+          try {
+            data = text ? JSON.parse(text) : null;
+          } catch {
+            data = text;
+          }
+          if (!r.ok) {
+            const messageText =
+              (typeof data === "string" && data) ||
+              (data && typeof data === "object" && "error" in data && data.error) ||
+              r.statusText ||
+              "Email send failed";
+            throw new Error(messageText);
+          }
+          setResponse(data ?? { success: true });
+          pushToast("success", "Email sent with Gmail.");
+          setInlineSummary((prev) => prev || "Email delivered.");
+        } catch (error) {
+          const messageText = error instanceof Error ? error.message : "Email send failed";
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
+          setResponse(null);
+        } finally {
+          setLoadingAction(null);
+        }
+        return;
       }
+
+      setLastAction(action);
 
       try {
         const r = await fetch("/api/rolodex", {
@@ -481,13 +927,46 @@ export default function Rolodex() {
           pushToast("success", "Contact created.");
         } else if (action === "update") {
           pushToast("success", "Contact updated.");
-        } else if (action === "email") {
-          pushToast("success", "Email sent.");
         } else if (action === "view") {
           if (!data || (Array.isArray(data) && data.length === 0)) {
             pushToast("info", "0 results found.");
+            setActiveContactEmail("");
           } else {
             const record = Array.isArray(data) ? data[0] : data;
+            if (record && record.local_id != null) {
+              const idString = String(record.local_id);
+              setContactId(idString);
+              setSelectedContactId(idString);
+            } else {
+              setSelectedContactId("");
+            }
+            if (record && typeof record.email === "string") {
+              setActiveContactEmail(record.email);
+            } else {
+              setActiveContactEmail("");
+            }
+            if (record && typeof record === "object") {
+              setEmailContacts((prev) => {
+                const recordId = record.local_id;
+                if (recordId === undefined || recordId === null) {
+                  return prev;
+                }
+                const recordIdString = String(recordId);
+                const exists = prev.some((item) => {
+                  if (!item || typeof item !== "object") return false;
+                  if (item.local_id === undefined || item.local_id === null) return false;
+                  return String(item.local_id) === recordIdString;
+                });
+                if (exists) {
+                  return prev.map((item) => {
+                    if (!item || typeof item !== "object") return item;
+                    if (item.local_id === undefined || item.local_id === null) return item;
+                    return String(item.local_id) === recordIdString ? { ...item, ...record } : item;
+                  });
+                }
+                return [...prev, record];
+              });
+            }
             setInlineSummary(formatSummary(record));
             pushToast("success", "Contact loaded.");
           }
@@ -502,14 +981,19 @@ export default function Rolodex() {
       }
     },
     [
+      activeContactEmail,
+      activeTab,
       contactId,
+      gmailUsername,
       email,
       fullName,
+      gmailStatus,
       location,
       message,
       profileUrl,
       pushToast,
       resetResponses,
+      selectedContactId,
       subject,
       title,
       username,
@@ -522,19 +1006,64 @@ export default function Rolodex() {
     return "Connect Gmail";
   }, [gmailStatus]);
 
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible" && gmailStatus === "connecting") {
-        setGmailStatus("connected");
-        pushToast("success", "Gmail connected.");
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [gmailStatus, pushToast]);
+  const themeLabel = useMemo(() => (theme === "dark" ? "Light Mode" : "Dark Mode"), [theme]);
+
+  const usernameHelperText = useMemo(() => {
+    if (activeTab === "view") {
+      return "Enter a username to load contacts.";
+    }
+    if (activeTab === "update") {
+      return "Use with Contact ID to update an existing contact.";
+    }
+    if (activeTab === "create") {
+      return "Optional: associate the contact with a user.";
+    }
+    if (activeTab === "email") {
+      return gmailStatus === "connected"
+        ? "Optional: load contacts for this user."
+        : "Enter your username to connect Gmail or load contacts.";
+    }
+    return "";
+  }, [activeTab, contactId, gmailStatus]);
+
+  const contactHelperText = useMemo(() => {
+    if (activeTab === "update") {
+      return "Required to update an existing contact.";
+    }
+    if (activeTab === "create") {
+      return "Optional unless you are updating a specific record.";
+    }
+    return "Loaded from the selected contact.";
+  }, [activeTab]);
+
+  const buttonClassName = useMemo(() => {
+    if (activeTab === "create") return "button";
+    if (activeTab === "email") return "button ghost";
+    return "button secondary";
+  }, [activeTab]);
+
+  const isLoading = loadingAction === activeTab;
+  const submitLabel = isLoading ? LOADING_LABELS[activeTab] : ACTION_LABELS[activeTab];
+
+  const viewRecords = useMemo(() => {
+    if (lastAction !== "view" || !response) {
+      return [];
+    }
+    const records = Array.isArray(response) ? response : [response];
+    return records.filter((record) => record && typeof record === "object");
+  }, [lastAction, response]);
 
   return (
     <div className="rolodex-page">
+      <button
+        type="button"
+        className="theme-toggle"
+        onClick={toggleTheme}
+        aria-pressed={theme === "dark"}
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {themeLabel}
+      </button>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <section className="rolodex-card" aria-labelledby="rolodex-heading">
         <header className="rolodex-header">
@@ -563,245 +1092,351 @@ export default function Rolodex() {
           </button>
         </header>
 
+        <nav className="tab-list" role="tablist" aria-label="Rolodex actions">
+          {TAB_ITEMS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`tab-button${isActive ? " active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                disabled={Boolean(loadingAction) && tab.id !== activeTab}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+
         <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-          <div className="rolodex-form-grid">
-            <div className={`field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <input
-                id="username"
-                className="text-input"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Username"
-                autoComplete="off"
-              />
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Use both to update an existing contact."}
+          {(activeTab === "create" || activeTab === "update") && (
+            <div className="rolodex-form-grid">
+              <div className={`field${usernameHighlight ? " error" : ""}`}>
+                <label className="field-label" htmlFor="username">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  className="text-input"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Username"
+                  autoComplete="off"
+                />
+                <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                  {usernameHighlight
+                    ? "Username is required to view a contact."
+                    : usernameHelperText}
+                </div>
+              </div>
+
+              <div className={`field${contactHighlight ? " error" : ""}`}>
+                <label className="field-label" htmlFor="contactId">
+                  Contact ID
+                </label>
+                <input
+                  id="contactId"
+                  className="text-input"
+                  value={contactId}
+                  onChange={(event) => {
+                    setContactId(event.target.value);
+                    setActiveContactEmail("");
+                  }}
+                  placeholder="Contact ID"
+                  autoComplete="off"
+                />
+                {contactId.trim() && (
+                  <button
+                    type="button"
+                    className="copy-button"
+                    onClick={handleCopyContactId}
+                    aria-label="Copy contact ID"
+                  >
+                    <IconCopy />
+                  </button>
+                )}
+                <div className={`helper-text${contactHighlight ? " error" : ""}`}>
+                  {contactHighlight
+                    ? "Contact ID is required to update a contact."
+                    : contactHelperText}
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor="fullName">
+                  Full Name
+                </label>
+                <input
+                  id="fullName"
+                  className="text-input"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Full Name"
+                />
+                <div className="helper-text" />
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor="title">
+                  Title
+                </label>
+                <input
+                  id="title"
+                  className="text-input"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Title"
+                />
+                <div className="helper-text" />
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor="company">
+                  Company
+                </label>
+                <input
+                  id="company"
+                  className="text-input"
+                  value={company}
+                  onChange={(event) => setCompany(event.target.value)}
+                  placeholder="Company"
+                />
+                <div className="helper-text" />
+              </div>
+
+              <div className="field">
+                <label className="field-label" htmlFor="location">
+                  Location
+                </label>
+                <input
+                  id="location"
+                  className="text-input"
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  placeholder="Location"
+                />
+                <div className="helper-text" />
+              </div>
+
+              <div
+                className={`field${
+                  fieldStatus.email === "error"
+                    ? " error"
+                    : fieldStatus.email === "success"
+                    ? " success"
+                    : ""
+                }`}
+              >
+                <label className="field-label" htmlFor="email">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  className="text-input"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onBlur={(event) => handleBlur("email", event.target.value)}
+                  onKeyDown={handleEmailKeyDown}
+                  placeholder="Email"
+                  inputMode="email"
+                  autoComplete="email"
+                />
+                <span className="success-indicator">
+                  <IconCheck />
+                </span>
+                <div className={`validation-text${fieldErrors.email ? " error" : ""}`}>
+                  {fieldErrors.email}
+                </div>
+              </div>
+
+              <div
+                className={`field${
+                  fieldStatus.profileUrl === "error"
+                    ? " error"
+                    : fieldStatus.profileUrl === "success"
+                    ? " success"
+                    : ""
+                }`}
+              >
+                <label className="field-label" htmlFor="profileUrl">
+                  Profile URL
+                </label>
+                <input
+                  id="profileUrl"
+                  className="text-input"
+                  value={profileUrl}
+                  onChange={(event) => setProfileUrl(event.target.value)}
+                  onBlur={(event) => handleBlur("profileUrl", event.target.value)}
+                  placeholder="Profile URL (e.g., linkedin.com/abc)"
+                  inputMode="url"
+                />
+                <span className="success-indicator">
+                  <IconCheck />
+                </span>
+                <div className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}>
+                  {fieldErrors.profileUrl}
+                </div>
               </div>
             </div>
+          )}
 
-            <div className={`field${contactHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="contactId">
-                Contact ID
-              </label>
-              <input
-                id="contactId"
-                className="text-input"
-                value={contactId}
-                onChange={(event) => setContactId(event.target.value)}
-                placeholder="Contact ID"
-                autoComplete="off"
-              />
-              {contactId.trim() && (
-                <button
-                  type="button"
-                  className="copy-button"
-                  onClick={handleCopyContactId}
-                  aria-label="Copy contact ID"
-                >
-                  <IconCopy />
-                </button>
-              )}
-              <div className={`helper-text${contactHighlight ? " error" : ""}`}>
-                {contactHighlight
-                  ? "Contact ID is required for this action."
-                  : "Use both to update an existing contact."}
+          {activeTab === "view" && (
+            <div className="rolodex-form-grid single">
+              <div className={`field${usernameHighlight ? " error" : ""}`}>
+                <label className="field-label" htmlFor="username">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  className="text-input"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="Username"
+                  autoComplete="off"
+                />
+                <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                  {usernameHighlight
+                    ? "Username is required to view a contact."
+                    : usernameHelperText}
+                </div>
               </div>
             </div>
+          )}
 
-            <div className="field">
-              <label className="field-label" htmlFor="fullName">
-                Full Name
-              </label>
-              <input
-                id="fullName"
-                className="text-input"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Full Name"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="title">
-                Title
-              </label>
-              <input
-                id="title"
-                className="text-input"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Title"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="company">
-                Company
-              </label>
-              <input
-                id="company"
-                className="text-input"
-                value={company}
-                onChange={(event) => setCompany(event.target.value)}
-                placeholder="Company"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="location">
-                Location
-              </label>
-              <input
-                id="location"
-                className="text-input"
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="Location"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div
-              className={`field${
-                fieldStatus.email === "error"
-                  ? " error"
-                  : fieldStatus.email === "success"
-                  ? " success"
-                  : ""
-              }`}
-            >
-              <label className="field-label" htmlFor="email">
-                Email
-              </label>
-              <input
-                id="email"
-                className="text-input"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                onBlur={(event) => handleBlur("email", event.target.value)}
-                onKeyDown={handleEmailKeyDown}
-                placeholder="Email"
-                inputMode="email"
-                autoComplete="email"
-              />
-              <span className="success-indicator">
-                <IconCheck />
-              </span>
-              <div className={`validation-text${fieldErrors.email ? " error" : ""}`}>
-                {fieldErrors.email}
+          {activeTab === "email" && (
+            <>
+              <div className="email-context" role="note">
+                {gmailStatus !== "connected"
+                  ? "Connect Gmail to enable sending."
+                  : activeContactEmail.trim()
+                  ? `Ready to email ${activeContactEmail.trim()}.`
+                  : "Select a contact or enter an email address to send."}
               </div>
-            </div>
+              <div className="rolodex-form-grid email">
+                <div className={`field${usernameHighlight ? " error" : ""}`}>
+                  <label className="field-label" htmlFor="username">
+                    Username
+                  </label>
+                  <div className="input-with-action">
+                    <input
+                      id="username"
+                      className="text-input"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder="Username"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="button secondary compact"
+                      onClick={handleLoadContacts}
+                      disabled={contactsLoading}
+                    >
+                      {contactsLoading ? <IconLoader /> : null}
+                      {contactsLoading ? "Loading…" : "Load"}
+                    </button>
+                  </div>
+                  <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                    {usernameHighlight ? "Username is required." : usernameHelperText}
+                  </div>
+                </div>
 
-            <div
-              className={`field${
-                fieldStatus.profileUrl === "error"
-                  ? " error"
-                  : fieldStatus.profileUrl === "success"
-                  ? " success"
-                  : ""
-              }`}
-            >
-              <label className="field-label" htmlFor="profileUrl">
-                Profile URL
-              </label>
-              <input
-                id="profileUrl"
-                className="text-input"
-                value={profileUrl}
-                onChange={(event) => setProfileUrl(event.target.value)}
-                onBlur={(event) => handleBlur("profileUrl", event.target.value)}
-                placeholder="Profile URL"
-                inputMode="url"
-              />
-              <span className="success-indicator">
-                <IconCheck />
-              </span>
-              <div className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}>
-                {fieldErrors.profileUrl}
+                <div className="field">
+                  <label className="field-label" htmlFor="recipientSelect">
+                    Contact
+                  </label>
+                  <select
+                    id="recipientSelect"
+                    className="select-input"
+                    value={selectedContactId}
+                    onChange={handleRecipientSelect}
+                    disabled={contactOptions.length === 0}
+                  >
+                    <option value="">Select a contact</option>
+                    {contactOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="helper-text">
+                    {contactOptions.length === 0
+                      ? "Load contacts to populate this list."
+                      : "Selecting a contact fills the email field."}
+                  </div>
+                </div>
+
+                <div className={`field${recipientError ? " error" : ""}`}>
+                  <label className="field-label" htmlFor="recipientEmail">
+                    Recipient Email
+                  </label>
+                  <input
+                    id="recipientEmail"
+                    className="text-input"
+                    value={activeContactEmail}
+                    onChange={(event) => {
+                      setActiveContactEmail(event.target.value);
+                      setRecipientError("");
+                      if (selectedContactId) {
+                        setSelectedContactId("");
+                      }
+                    }}
+                    placeholder="name@example.com"
+                    inputMode="email"
+                    autoComplete="email"
+                  />
+                  <div className={`helper-text${recipientError ? " error" : ""}`}>
+                    {recipientError || "Required: Gmail recipient address."}
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label" htmlFor="subject">
+                    Subject
+                  </label>
+                  <input
+                    id="subject"
+                    className="text-input"
+                    value={subject}
+                    onChange={(event) => setSubject(event.target.value)}
+                    onKeyDown={handleSubjectKeyDown}
+                    placeholder="Subject"
+                  />
+                  <div className="helper-text" />
+                </div>
+
+                <div className="field full-width">
+                  <label className="field-label" htmlFor="message">
+                    Message
+                  </label>
+                  <textarea
+                    id="message"
+                    className="text-area"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    onKeyDown={handleMessageKeyDown}
+                    placeholder="Message"
+                    rows={6}
+                  />
+                  <div className="helper-text" />
+                </div>
               </div>
-            </div>
-
-            <div className="field double">
-              <label className="field-label" htmlFor="subject">
-                Subject
-              </label>
-              <input
-                id="subject"
-                className="text-input"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-                onKeyDown={handleSubjectKeyDown}
-                placeholder="Subject"
-              />
-              <div className="helper-text" />
-            </div>
-
-            <div className="field double">
-              <label className="field-label" htmlFor="message">
-                Message
-              </label>
-              <textarea
-                id="message"
-                className="text-area"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={handleMessageKeyDown}
-                placeholder="Message"
-                rows={6}
-              />
-              <div className="helper-text" />
-            </div>
-          </div>
+            </>
+          )}
 
           <div className="action-row">
             <button
+              ref={activeTab === "email" ? emailButtonRef : null}
               type="submit"
-              value="create"
-              className="button"
+              className={buttonClassName}
               disabled={disableSubmit}
-              aria-busy={loadingAction === "create"}
+              aria-busy={isLoading}
             >
-              {loadingAction === "create" ? <IconLoader /> : null}
-              {loadingAction === "create" ? "Creating…" : "Create"}
-            </button>
-            <button
-              type="submit"
-              value="update"
-              className="button secondary"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "update"}
-            >
-              {loadingAction === "update" ? <IconLoader /> : null}
-              {loadingAction === "update" ? "Updating…" : "Update"}
-            </button>
-            <button
-              type="submit"
-              value="view"
-              className="button secondary"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "view"}
-            >
-              {loadingAction === "view" ? <IconLoader /> : null}
-              {loadingAction === "view" ? "Viewing…" : "View"}
-            </button>
-            <button
-              ref={emailButtonRef}
-              type="submit"
-              value="email"
-              className="button ghost"
-              disabled={disableSubmit}
-              aria-busy={loadingAction === "email"}
-            >
-              {loadingAction === "email" ? <IconLoader /> : null}
-              {loadingAction === "email" ? "Sending…" : "Email"}
+              {isLoading ? <IconLoader /> : null}
+              {submitLabel}
             </button>
           </div>
         </form>
@@ -817,14 +1452,89 @@ export default function Rolodex() {
               {inlineSummary}
             </div>
           )}
-          {response && (
+          {lastAction === "view" && !errorMessage && viewRecords.length === 0 && response && (
+            <div className="inline-result" role="note">
+              No contacts found.
+            </div>
+          )}
+          {lastAction === "view" && viewRecords.length > 0 && (
+            <div className="view-table-wrapper" aria-live="polite">
+              <table className="view-table">
+                <thead>
+                  <tr>
+                    {VIEW_COLUMNS.map((column) => (
+                      <th key={column.key} scope="col">
+                        {column.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {viewRecords.map((record, index) => (
+                    <tr key={record.local_id ?? index}>
+                      {VIEW_COLUMNS.map((column) => {
+                        const rawValue = record?.[column.key];
+                        if (column.key === "recency") {
+                          const { label, tone } = getRecencyStatus(record?.last_updated);
+                          return (
+                            <td key={column.key} data-label={column.label}>
+                              <span className={`recency-badge ${tone}`}>{label}</span>
+                            </td>
+                          );
+                        }
+                        if (column.key === "profile_url") {
+                          if (!rawValue) {
+                            return (
+                              <td key={column.key} data-label={column.label}>
+                                —
+                              </td>
+                            );
+                          }
+                          const valueString = String(rawValue);
+                          return (
+                            <td key={column.key} data-label={column.label}>
+                              <a
+                                href={normalizeProfileHref(valueString)}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              >
+                                {valueString}
+                              </a>
+                            </td>
+                          );
+                        }
+                        if (column.key === "last_updated") {
+                          const formatted = rawValue ? formatDateTime(rawValue) : "";
+                          return (
+                            <td key={column.key} data-label={column.label}>
+                              {formatted || "—"}
+                            </td>
+                          );
+                        }
+                        const displayValue =
+                          rawValue === null || rawValue === undefined || rawValue === ""
+                            ? "—"
+                            : String(rawValue);
+                        return (
+                          <td key={column.key} data-label={column.label}>
+                            {displayValue}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {response && lastAction && lastAction !== "view" && (
             <pre className="response-view" aria-live="polite">
               {JSON.stringify(response, null, 2)}
             </pre>
           )}
         </div>
 
-        {!response && !inlineSummary && !errorMessage && (
+        {!response && viewRecords.length === 0 && !inlineSummary && !errorMessage && (
           <div className="empty-footer">No contact selected.</div>
         )}
       </section>
