@@ -1,17 +1,12 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const { handlers, auth } = NextAuth({
+export default NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/gmail.send",
-        },
-      },
+      scope: "openid email profile https://www.googleapis.com/auth/gmail.send",
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
