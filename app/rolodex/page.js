@@ -1,4 +1,5 @@
 "use client";
+import { signIn } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./rolodex.css";
 
@@ -247,11 +248,6 @@ export default function Rolodex() {
   const validationTimers = useRef({});
   const emailButtonRef = useRef(null);
 
-  const trimmedUsernameForLink = username.trim();
-  const oauthUrl = trimmedUsernameForLink
-    ? `/api/oauth/google/start?userId=${encodeURIComponent(trimmedUsernameForLink)}`
-    : "/api/oauth/google/start?userId=YOUR_USER_ID";
-
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
     setToasts((prev) => [...prev, { id, type, message }]);
@@ -350,17 +346,17 @@ export default function Rolodex() {
       });
   }, [contactId, pushToast]);
 
-  const handleGmailClick = useCallback(
-    (event) => {
-      event.preventDefault();
-      if (gmailStatus === "connecting") return;
-      setGmailStatus("connecting");
-      setTimeout(() => {
-        window.location.href = oauthUrl;
-      }, 120);
-    },
-    [gmailStatus, oauthUrl]
-  );
+  const handleGmailClick = useCallback(async () => {
+    if (gmailStatus === "connecting") return;
+    setGmailStatus("connecting");
+    try {
+      await signIn("google");
+    } catch (error) {
+      console.error("Failed to start Google sign-in", error);
+      setGmailStatus("disconnected");
+      pushToast("error", "Unable to start Google sign-in.");
+    }
+  }, [gmailStatus, pushToast]);
 
   const handleSubjectKeyDown = useCallback((event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
