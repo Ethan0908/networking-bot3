@@ -77,6 +77,26 @@
   flex-wrap: wrap;
 }
 
+.auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auth-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.auth-greeting {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 .rolodex-heading {
   display: flex;
   flex-direction: column;

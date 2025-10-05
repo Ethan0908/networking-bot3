@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AuthButton from "../components/AuthButton";
 import "./rolodex.css";
 
 function IconLoader(props) {
@@ -730,25 +731,28 @@ export default function Rolodex() {
             <h1 id="rolodex-heading">Rolodex</h1>
             <p>Track contacts and follow-ups.</p>
           </div>
-          <button
-            type="button"
-            className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-            onClick={handleGmailClick}
-            disabled={gmailStatus === "connecting"}
-            aria-busy={gmailStatus === "connecting"}
-          >
-            <span className="icon">
-              {gmailStatus === "connecting" ? (
-                <IconLoader />
-              ) : gmailStatus === "connected" ? (
-                <IconCheck />
-              ) : (
-                <IconMail />
-              )}
-            </span>
-            {gmailLabel}
-            <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-          </button>
+          <div className="auth-actions">
+            <AuthButton />
+            <button
+              type="button"
+              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+              onClick={handleGmailClick}
+              disabled={gmailStatus === "connecting"}
+              aria-busy={gmailStatus === "connecting"}
+            >
+              <span className="icon">
+                {gmailStatus === "connecting" ? (
+                  <IconLoader />
+                ) : gmailStatus === "connected" ? (
+                  <IconCheck />
+                ) : (
+                  <IconMail />
+                )}
+              </span>
+              {gmailLabel}
+              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+            </button>
+          </div>
         </header>
 
         <div className="context-grid" role="group" aria-label="Contact context">
@@ -828,14 +832,14 @@ export default function Rolodex() {
                   <button
                     type="submit"
                     value="create"
-                  className="button"
-                  disabled={disableSubmit}
-                  aria-busy={loadingAction === "create"}
-                >
-                  {loadingAction === "create" ? <IconLoader /> : null}
-                  {loadingAction === "create" ? "Creating…" : "Create"}
-                </button>
-              </div>
+                    className="button"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "create"}
+                  >
+                    {loadingAction === "create" ? <IconLoader /> : null}
+                    {loadingAction === "create" ? "Creating…" : "Create"}
+                  </button>
+                </div>
               </form>
             </div>
           )}
