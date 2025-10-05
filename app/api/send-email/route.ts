@@ -1,15 +1,12 @@
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route"; // adjust import if needed
+import { authOptions } from "@/lib/auth";
 
-// Helper: base64url
+export const runtime = "nodejs";
+
 function toBase64Url(str: string) {
-  return Buffer.from(str)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return Buffer.from(str).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export async function POST(req: NextRequest) {
@@ -22,32 +19,27 @@ export async function POST(req: NextRequest) {
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   );
-
-  // Use user tokens from NextAuth
   oauth2.setCredentials({
     access_token: (session as any).access_token,
     refresh_token: (session as any).refresh_token,
   });
 
   const gmail = google.gmail({ version: "v1", auth: oauth2 });
-
   const from = session.user?.email!;
   const body = html ?? (text ? text.replace(/\n/g, "<br/>") : "");
-  const rawLines = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    "MIME-Version: 1.0",
-    "Content-Type: text/html; charset=UTF-8",
-    "",
-    body,
-  ];
-  const raw = toBase64Url(rawLines.join("\n"));
 
-  await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw },
-  });
+  const raw = toBase64Url(
+    [
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/html; charset=UTF-8",
+      "",
+      body,
+    ].join("\n")
+  );
 
+  await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
   return Response.json({ ok: true });
 }

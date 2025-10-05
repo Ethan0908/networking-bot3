@@ -1,45 +1,7 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import NextAuth from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-const scopes = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.send",
-].join(" ");
-
-export const authOptions: NextAuthOptions = {
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: scopes,
-          access_type: "offline",   // gives refresh_token
-          prompt: "consent",        // forces refresh_token on first consent
-        },
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, account }) {
-      if (account) {
-        token.access_token = account.access_token;
-        token.refresh_token = account.refresh_token ?? token.refresh_token;
-        token.expires_at = Date.now() + (account.expires_in ?? 3600) * 1000;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      (session as any).access_token = token.access_token;
-      (session as any).refresh_token = token.refresh_token;
-      (session as any).expires_at = token.expires_at;
-      return session;
-    },
-  },
-  secret: process.env.AUTH_SECRET,
-};
+export const runtime = "nodejs"; // safer with googleapis
 
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
