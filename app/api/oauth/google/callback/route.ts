@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { Pool } from "pg";
 
+import { resolveRedirectUri } from "../utils";
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 function enc(plain: string) {
@@ -20,11 +22,13 @@ export async function GET(req: NextRequest) {
   if (!code || !stateRaw) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const { username } = JSON.parse(decodeURIComponent(stateRaw));
 
+  const redirectUri = resolveRedirectUri(req);
+
   const body = new URLSearchParams({
     code,
     client_id: process.env.GOOGLE_CLIENT_ID!,
     client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-    redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
+    redirect_uri: redirectUri,
     grant_type: "authorization_code",
   });
 

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveRedirectUri } from "../utils";
+
 export async function GET(req: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID!;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI!;
+  const redirectUri = resolveRedirectUri(req);
   const scope = "https://www.googleapis.com/auth/gmail.send";
   // Replace with your auth/session username
   const username =
