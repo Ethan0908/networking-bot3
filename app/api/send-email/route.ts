@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+// go up 3 levels from this file to reach /lib/auth
+import { authOptions } from "../../../lib/auth";
 
 export const runtime = "nodejs";
 

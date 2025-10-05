@@ -23,20 +23,23 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, account }) {
-      if (account) {
-        token.access_token = account.access_token;
-        token.refresh_token = account.refresh_token ?? token.refresh_token;
-        token.expires_at = Date.now() + (account.expires_in ?? 3600) * 1000;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      (session as any).access_token = token.access_token;
-      (session as any).refresh_token = token.refresh_token;
-      (session as any).expires_at = token.expires_at;
-      return session;
-    },
+  async jwt({ token, account }) {
+    if (account) {
+      (token as any).access_token = account.access_token;
+      (token as any).refresh_token = account.refresh_token ?? (token as any).refresh_token;
+
+      // coerce to number safely
+      const expiresInSec = Number(account.expires_in ?? 3600);
+      (token as any).expires_at = Date.now() + expiresInSec * 1000;
+    }
+    return token;
   },
+  async session({ session, token }) {
+    (session as any).access_token = (token as any).access_token;
+    (session as any).refresh_token = (token as any).refresh_token;
+    (session as any).expires_at = (token as any).expires_at;
+    return session;
+  },
+},
   secret: process.env.AUTH_SECRET,
 };
