@@ -61,25 +61,6 @@ function IconCheck(props) {
   );
 }
 
-function IconStar({ filled, className }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill={filled ? "#facc15" : "none"}
-      stroke={filled ? "#facc15" : "currentColor"}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-    </svg>
-  );
-}
-
 function IconCopy(props) {
   return (
     <svg
@@ -444,23 +425,34 @@ export default function Rolodex() {
     }
   }, [activePage]);
 
-  const handleCopyContactId = useCallback(() => {
-    if (!contactId.trim()) {
-      return;
-    }
-    if (!navigator.clipboard?.writeText) {
-      pushToast("info", "Contact ID copied.");
-      return;
-    }
-    navigator.clipboard
-      .writeText(contactId.trim())
-      .then(() => {
+  const copyContactIdToClipboard = useCallback(
+    (value) => {
+      if (!value) {
+        return;
+      }
+      const trimmed = String(value).trim();
+      if (!trimmed) {
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         pushToast("info", "Contact ID copied.");
-      })
-      .catch(() => {
-        pushToast("error", "Unable to copy contact ID.");
-      });
-  }, [contactId, pushToast]);
+        return;
+      }
+      navigator.clipboard
+        .writeText(trimmed)
+        .then(() => {
+          pushToast("info", "Contact ID copied.");
+        })
+        .catch(() => {
+          pushToast("error", "Unable to copy contact ID.");
+        });
+    },
+    [pushToast]
+  );
+
+  const handleCopyContactId = useCallback(() => {
+    copyContactIdToClipboard(contactId);
+  }, [contactId, copyContactIdToClipboard]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
@@ -794,8 +786,8 @@ export default function Rolodex() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [gmailStatus, pushToast]);
 
-  const renderContactDetails = () => (
-    <div className="rolodex-form-grid">
+  const contactDetailFields = (
+    <>
       <div className="field">
         <label className="field-label" htmlFor="fullName">
           Full Name
@@ -911,7 +903,7 @@ export default function Rolodex() {
           {fieldErrors.profileUrl}
         </div>
       </div>
-    </div>
+    </>
   );
 
   const tabs = [
@@ -1021,11 +1013,30 @@ export default function Rolodex() {
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <section className="rolodex-card" aria-labelledby="rolodex-heading">
         <header className="rolodex-header">
-          <div className="heading-block">
-            <div className="rolodex-heading">
-              <h1 id="rolodex-heading">Rolodex</h1>
-              <p>Track contacts and follow-ups.</p>
-            </div>
+          <div className="rolodex-heading">
+            <h1 id="rolodex-heading">Rolodex</h1>
+            <p>Track contacts and follow-ups.</p>
+          </div>
+          <div className="header-actions">
+            <button
+              type="button"
+              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+              onClick={handleGmailClick}
+              disabled={gmailStatus === "connecting"}
+              aria-busy={gmailStatus === "connecting"}
+            >
+              <span className="icon">
+                {gmailStatus === "connecting" ? (
+                  <IconLoader />
+                ) : gmailStatus === "connected" ? (
+                  <IconCheck />
+                ) : (
+                  <IconMail />
+                )}
+              </span>
+              {gmailLabel}
+              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+            </button>
             <button
               type="button"
               className="theme-toggle"
@@ -1036,25 +1047,6 @@ export default function Rolodex() {
               <span>{theme === "dark" ? "Light" : "Dark"}</span>
             </button>
           </div>
-          <button
-            type="button"
-            className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-            onClick={handleGmailClick}
-            disabled={gmailStatus === "connecting"}
-            aria-busy={gmailStatus === "connecting"}
-          >
-            <span className="icon">
-              {gmailStatus === "connecting" ? (
-                <IconLoader />
-              ) : gmailStatus === "connected" ? (
-                <IconCheck />
-              ) : (
-                <IconMail />
-              )}
-            </span>
-            {gmailLabel}
-            <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-          </button>
         </header>
 
         <div className="context-grid" role="group" aria-label="Contact context">
@@ -1130,7 +1122,7 @@ export default function Rolodex() {
           {activePage === "create" && (
             <div role="tabpanel" id="create-panel" aria-labelledby="create-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                {renderContactDetails()}
+                <div className="rolodex-form-grid">{contactDetailFields}</div>
                 <div className="action-row">
                   <button
                     type="submit"
@@ -1170,7 +1162,7 @@ export default function Rolodex() {
           {activePage === "update" && (
             <div role="tabpanel" id="update-panel" aria-labelledby="update-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                {renderContactDetails()}
+                <div className="rolodex-form-grid">{contactDetailFields}</div>
                 <div className="action-row">
                   <button
                     type="submit"
@@ -1190,84 +1182,83 @@ export default function Rolodex() {
           {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                <div className="field recipients-field">
-                  <span id="recipient-label" className="field-label">
-                    Recipients
-                  </span>
-                  <div className="recipient-controls">
-                    <label className="select-all-control">
-                      <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        onChange={handleToggleSelectAll}
-                        checked={allRecipientsSelected}
-                        disabled={emailContacts.length === 0}
-                        aria-label="Select all recipients"
-                      />
-                      <span>Select all</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="button tertiary load-contacts-button"
-                      onClick={handleLoadEmailContacts}
-                      disabled={loadingContacts}
-                      aria-busy={loadingContacts}
-                    >
-                      {loadingContacts ? <IconLoader /> : null}
-                      {loadingContacts ? "Loading…" : "Load Contacts"}
-                    </button>
-                  </div>
-                  {emailContacts.length === 0 ? (
-                    <p className="recipient-placeholder">Load contacts to choose recipients.</p>
-                  ) : (
-                    <ul
-                      className="recipient-list"
-                      role="listbox"
-                      aria-labelledby="recipient-label"
-                      aria-multiselectable="true"
-                    >
-                      {emailContacts.map((contact) => {
-                        const id = contact.__contactId || resolveContactId(contact);
-                        if (!id) {
-                          return null;
-                        }
-                        const normalizedId = String(id);
-                        const isSelected = emailRecipients.includes(normalizedId);
-                        return (
-                          <li
-                            key={normalizedId}
-                            role="option"
-                            aria-selected={isSelected}
-                            className="recipient-list-item"
-                          >
-                            <label className={`recipient-row${isSelected ? " selected" : ""}`}>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => handleToggleRecipient(normalizedId)}
-                              />
-                              <span className="recipient-row-main">
-                                <span className="recipient-name">
-                                  {contact.full_name ?? contact.fullName ?? `Contact ${normalizedId}`}
+                <div className="rolodex-form-grid email-grid">
+                  {contactDetailFields}
+                  <div className="field double recipients-field">
+                    <span id="recipient-label" className="field-label">
+                      Recipients
+                    </span>
+                    <div className="recipient-controls">
+                      <label className="select-all-control">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          onChange={handleToggleSelectAll}
+                          checked={allRecipientsSelected}
+                          disabled={emailContacts.length === 0}
+                          aria-label="Select all recipients"
+                        />
+                        <span>Select all</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="button tertiary load-contacts-button"
+                        onClick={handleLoadEmailContacts}
+                        disabled={loadingContacts}
+                        aria-busy={loadingContacts}
+                      >
+                        {loadingContacts ? <IconLoader /> : null}
+                        {loadingContacts ? "Loading…" : "Load Contacts"}
+                      </button>
+                    </div>
+                    {emailContacts.length === 0 ? (
+                      <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                    ) : (
+                      <ul
+                        className="recipient-list"
+                        role="listbox"
+                        aria-labelledby="recipient-label"
+                        aria-multiselectable="true"
+                      >
+                        {emailContacts.map((contact) => {
+                          const id = contact.__contactId || resolveContactId(contact);
+                          if (!id) {
+                            return null;
+                          }
+                          const normalizedId = String(id);
+                          const isSelected = emailRecipients.includes(normalizedId);
+                          return (
+                            <li
+                              key={normalizedId}
+                              role="option"
+                              aria-selected={isSelected}
+                              className="recipient-list-item"
+                            >
+                              <label className={`recipient-row${isSelected ? " selected" : ""}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleRecipient(normalizedId)}
+                                />
+                                <span className="recipient-row-main">
+                                  <span className="recipient-name">
+                                    {contact.full_name ?? contact.fullName ?? `Contact ${normalizedId}`}
+                                  </span>
+                                  <span className="recipient-email">{contact.email ?? "No email"}</span>
                                 </span>
-                                <span className="recipient-email">{contact.email ?? "No email"}</span>
-                              </span>
-                              <span className={`recipient-star${isSelected ? " active" : ""}`} aria-hidden="true">
-                                <IconStar filled={isSelected} />
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <div className="helper-text">
-                    {emailRecipients.length > 0
-                      ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
-                      : "No recipients selected."}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    <div className="helper-text">
+                      {emailRecipients.length > 0
+                        ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
+                        : "No recipients selected."}
+                    </div>
                   </div>
-                </div>
-                <div className="email-form-grid">
+
                   <div className="field">
                     <label className="field-label" htmlFor="subject">
                       Subject
@@ -1283,7 +1274,7 @@ export default function Rolodex() {
                     <div className="helper-text" />
                   </div>
 
-                  <div className="field">
+                  <div className="field double">
                     <label className="field-label" htmlFor="message">
                       Message
                     </label>
@@ -1342,6 +1333,7 @@ export default function Rolodex() {
                 )}
                 <thead>
                   <tr>
+                    <th scope="col">Contact ID</th>
                     <th scope="col">Full Name</th>
                     <th scope="col">Title</th>
                     <th scope="col">Company</th>
@@ -1369,6 +1361,21 @@ export default function Rolodex() {
                     );
                     return (
                       <tr key={key}>
+                        <td className="contact-id-cell">
+                          {contactIdValue ? (
+                            <button
+                              type="button"
+                              className="contact-id-button"
+                              onClick={() => copyContactIdToClipboard(contactIdValue)}
+                              aria-label={`Copy contact ID ${contactIdValue}`}
+                            >
+                              <span>{contactIdValue}</span>
+                              <IconCopy />
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td>{record.full_name ?? record.fullName ?? "—"}</td>
                         <td>{record.title ?? "—"}</td>
                         <td>{record.company ?? "—"}</td>
