@@ -85,6 +85,26 @@ const TOAST_TIMEOUT = 4500;
 
 const EMAIL_REGEX = /.+@.+\..+/;
 
+const SAMPLE_CONTACT_RECORD = {
+  contact_id: 1,
+  local_id: 1,
+  full_name: "John Doe",
+  title: "CEO",
+  company: "Company",
+  location: "New York City",
+  profile_url: "www.exampleurl.com",
+  email: "example@gmail.com",
+  engagement_label: "0 messages",
+  last_updated: "2025-01-01T12:00:00",
+};
+
+const SAMPLE_CONTACT_ID = String(
+  SAMPLE_CONTACT_RECORD.contact_id ??
+    SAMPLE_CONTACT_RECORD.local_id ??
+    SAMPLE_CONTACT_RECORD.id ??
+    1
+);
+
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -292,7 +312,10 @@ export default function Rolodex() {
   const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
-  const [emailContacts, setEmailContacts] = useState([]);
+  const [emailContacts, setEmailContacts] = useState(() => [
+    { ...SAMPLE_CONTACT_RECORD, __contactId: SAMPLE_CONTACT_ID },
+  ]);
+  const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
   const [emailRecipients, setEmailRecipients] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const validationTimers = useRef({});
@@ -547,8 +570,13 @@ export default function Rolodex() {
         .filter((record) => record && typeof record === "object")
         .map((record) => ({ ...record, __contactId: resolveContactId(record) }))
         .filter((record) => record.__contactId);
-      setEmailContacts(normalized);
+      if (normalized.length > 0) {
+        setEmailContacts(normalized);
+      } else {
+        setEmailContacts([]);
+      }
       setEmailRecipients([]);
+      setIsSampleEmailContacts(false);
       if (normalized.length === 0) {
         pushToast("info", "No contacts found for this username.");
       } else {
@@ -963,17 +991,7 @@ export default function Rolodex() {
   };
 
   const sampleViewRecord = useMemo(
-    () => ({
-      local_id: 1,
-      full_name: "Ethan Wang",
-      title: "Analyst",
-      company: "reddit",
-      location: "nyc",
-      profile_url: "https://www.linkedin.com",
-      email: "ethan@gmail.com",
-      last_contacted: "2025-09-18T12:05:00.000Z",
-      last_updated: "2025-10-02T08:11:55.857Z",
-    }),
+    () => ({ ...SAMPLE_CONTACT_RECORD }),
     []
   );
 
@@ -1018,6 +1036,13 @@ export default function Rolodex() {
 
   const computeEngagementStatus = useCallback(
     (record) => {
+      const explicitLabel =
+        record?.engagement_label ??
+        record?.engagementLabel ??
+        record?.engagement_text ??
+        record?.engagementText ??
+        record?.engagement ??
+        null;
       const candidate =
         record?.last_contacted ??
         record?.last_messaged ??
@@ -1025,10 +1050,16 @@ export default function Rolodex() {
         record?.last_contacted_at ??
         null;
       if (!candidate) {
+        if (explicitLabel) {
+          return { color: "gray", label: explicitLabel };
+        }
         return { color: "gray", label: "No recent messages" };
       }
       const date = new Date(candidate);
       if (Number.isNaN(date.getTime())) {
+        if (explicitLabel) {
+          return { color: "gray", label: explicitLabel };
+        }
         return { color: "gray", label: "No recent messages" };
       }
       const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
@@ -1223,17 +1254,6 @@ export default function Rolodex() {
                       Recipients
                     </span>
                     <div className="recipient-controls">
-                      <label className="select-all-control">
-                        <input
-                          ref={selectAllRef}
-                          type="checkbox"
-                          onChange={handleToggleSelectAll}
-                          checked={allRecipientsSelected}
-                          disabled={emailContacts.length === 0}
-                          aria-label="Select all recipients"
-                        />
-                        <span>Select all</span>
-                      </label>
                       <button
                         type="button"
                         className="button tertiary load-contacts-button"
@@ -1255,10 +1275,28 @@ export default function Rolodex() {
                       aria-labelledby="recipient-label"
                     >
                       <table className="view-table recipient-table">
+                        {isSampleEmailContacts && (
+                          <caption className="view-table-caption">
+                            Sample contact shown. Load a contact to see live data.
+                          </caption>
+                        )}
                         <thead>
                           <tr>
                             <th scope="col" className="select-header">
-                              Select
+                              <div className="select-header-content">
+                                <span className="select-header-label">Select</span>
+                                <label className="select-all-control">
+                                  <input
+                                    ref={selectAllRef}
+                                    type="checkbox"
+                                    onChange={handleToggleSelectAll}
+                                    checked={allRecipientsSelected}
+                                    disabled={allRecipientIds.length === 0}
+                                    aria-label="Select all recipients"
+                                  />
+                                  <span>Select all</span>
+                                </label>
+                              </div>
                             </th>
                             <th scope="col">Contact ID</th>
                             <th scope="col">Full Name</th>
