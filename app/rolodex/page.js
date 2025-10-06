@@ -61,6 +61,25 @@ function IconCheck(props) {
   );
 }
 
+function IconStar({ filled, className }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill={filled ? "#facc15" : "none"}
+      stroke={filled ? "#facc15" : "currentColor"}
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+    </svg>
+  );
+}
+
 function IconCopy(props) {
   return (
     <svg
@@ -297,6 +316,7 @@ export default function Rolodex() {
   const [loadingContacts, setLoadingContacts] = useState(false);
   const validationTimers = useRef({});
   const emailButtonRef = useRef(null);
+  const selectAllRef = useRef(null);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -365,7 +385,7 @@ export default function Rolodex() {
   );
 
   const disableSubmit = Boolean(loadingAction);
-  const showContactIdField = activePage !== "create";
+  const showContactIdField = activePage === "update";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -554,6 +574,37 @@ export default function Rolodex() {
         : [...prev, normalizedId];
     });
   }, []);
+
+  const allRecipientIds = useMemo(
+    () =>
+      emailContacts
+        .map((contact) => contact.__contactId || resolveContactId(contact))
+        .filter(Boolean)
+        .map(String),
+    [emailContacts, resolveContactId]
+  );
+
+  const allRecipientsSelected = useMemo(() => {
+    if (allRecipientIds.length === 0) {
+      return false;
+    }
+    return allRecipientIds.every((id) => emailRecipients.includes(id));
+  }, [allRecipientIds, emailRecipients]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) {
+      return;
+    }
+    selectAllRef.current.indeterminate =
+      emailRecipients.length > 0 && !allRecipientsSelected;
+  }, [allRecipientsSelected, emailRecipients]);
+
+  const handleToggleSelectAll = useCallback(() => {
+    if (allRecipientIds.length === 0) {
+      return;
+    }
+    setEmailRecipients((prev) => (allRecipientsSelected ? [] : allRecipientIds));
+  }, [allRecipientIds, allRecipientsSelected]);
 
   const resetResponses = useCallback(() => {
     setResponse(null);
@@ -971,6 +1022,10 @@ export default function Rolodex() {
       <section className="rolodex-card" aria-labelledby="rolodex-heading">
         <header className="rolodex-header">
           <div className="heading-block">
+            <div className="rolodex-heading">
+              <h1 id="rolodex-heading">Rolodex</h1>
+              <p>Track contacts and follow-ups.</p>
+            </div>
             <button
               type="button"
               className="theme-toggle"
@@ -980,10 +1035,6 @@ export default function Rolodex() {
               {theme === "dark" ? <IconSun /> : <IconMoon />}
               <span>{theme === "dark" ? "Light" : "Dark"}</span>
             </button>
-            <div className="rolodex-heading">
-              <h1 id="rolodex-heading">Rolodex</h1>
-              <p>Track contacts and follow-ups.</p>
-            </div>
           </div>
           <button
             type="button"
@@ -1140,13 +1191,24 @@ export default function Rolodex() {
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
                 <div className="field recipients-field">
-                  <div className="field-header">
-                    <span id="recipient-label" className="field-label">
-                      Recipients
-                    </span>
+                  <span id="recipient-label" className="field-label">
+                    Recipients
+                  </span>
+                  <div className="recipient-controls">
+                    <label className="select-all-control">
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        onChange={handleToggleSelectAll}
+                        checked={allRecipientsSelected}
+                        disabled={emailContacts.length === 0}
+                        aria-label="Select all recipients"
+                      />
+                      <span>Select all</span>
+                    </label>
                     <button
                       type="button"
-                      className="button tertiary"
+                      className="button tertiary load-contacts-button"
                       onClick={handleLoadEmailContacts}
                       disabled={loadingContacts}
                       aria-busy={loadingContacts}
@@ -1155,38 +1217,50 @@ export default function Rolodex() {
                       {loadingContacts ? "Loading…" : "Load Contacts"}
                     </button>
                   </div>
-                  <div
-                    className={`recipient-grid${emailContacts.length === 0 ? " empty" : ""}`}
-                    role="listbox"
-                    aria-labelledby="recipient-label"
-                    aria-multiselectable="true"
-                  >
-                    {emailContacts.length === 0 ? (
-                      <p className="recipient-placeholder">Load contacts to choose recipients.</p>
-                    ) : (
-                      emailContacts.map((contact) => {
+                  {emailContacts.length === 0 ? (
+                    <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                  ) : (
+                    <ul
+                      className="recipient-list"
+                      role="listbox"
+                      aria-labelledby="recipient-label"
+                      aria-multiselectable="true"
+                    >
+                      {emailContacts.map((contact) => {
                         const id = contact.__contactId || resolveContactId(contact);
                         if (!id) {
                           return null;
                         }
-                        const isSelected = emailRecipients.includes(id);
+                        const normalizedId = String(id);
+                        const isSelected = emailRecipients.includes(normalizedId);
                         return (
-                          <button
-                            key={id}
-                            type="button"
-                            className={`recipient-chip${isSelected ? " selected" : ""}`}
-                            onClick={() => handleToggleRecipient(id)}
-                            aria-pressed={isSelected}
+                          <li
+                            key={normalizedId}
+                            role="option"
+                            aria-selected={isSelected}
+                            className="recipient-list-item"
                           >
-                            <span className="chip-primary">
-                              {contact.full_name ?? contact.fullName ?? `Contact ${id}`}
-                            </span>
-                            <span className="chip-secondary">{contact.email ?? "No email"}</span>
-                          </button>
+                            <label className={`recipient-row${isSelected ? " selected" : ""}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleToggleRecipient(normalizedId)}
+                              />
+                              <span className="recipient-row-main">
+                                <span className="recipient-name">
+                                  {contact.full_name ?? contact.fullName ?? `Contact ${normalizedId}`}
+                                </span>
+                                <span className="recipient-email">{contact.email ?? "No email"}</span>
+                              </span>
+                              <span className={`recipient-star${isSelected ? " active" : ""}`} aria-hidden="true">
+                                <IconStar filled={isSelected} />
+                              </span>
+                            </label>
+                          </li>
                         );
-                      })
-                    )}
-                  </div>
+                      })}
+                    </ul>
+                  )}
                   <div className="helper-text">
                     {emailRecipients.length > 0
                       ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
@@ -1268,7 +1342,6 @@ export default function Rolodex() {
                 )}
                 <thead>
                   <tr>
-                    <th scope="col">Contact ID</th>
                     <th scope="col">Full Name</th>
                     <th scope="col">Title</th>
                     <th scope="col">Company</th>
@@ -1296,7 +1369,6 @@ export default function Rolodex() {
                     );
                     return (
                       <tr key={key}>
-                        <td>{contactIdValue || "—"}</td>
                         <td>{record.full_name ?? record.fullName ?? "—"}</td>
                         <td>{record.title ?? "—"}</td>
                         <td>{record.company ?? "—"}</td>
