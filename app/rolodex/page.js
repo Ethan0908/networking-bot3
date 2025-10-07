@@ -105,6 +105,822 @@ const SAMPLE_CONTACT_ID = String(
     1
 );
 
+const TEMPLATE_TOKEN_OPTIONS = [
+  { key: "contact.name", label: "contact.name" },
+  { key: "contact.email", label: "contact.email" },
+  { key: "company", label: "company" },
+  { key: "role", label: "role" },
+  { key: "student.name", label: "student.name" },
+  { key: "company.facts", label: "company.facts" },
+  { key: "draft", label: "draft", isSpecial: true },
+];
+
+function generateTemplateContactId() {
+  return `template-contact-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createTemplateContact(overrides = {}) {
+  return {
+    id: generateTemplateContactId(),
+    name: "",
+    email: "",
+    title: "",
+    ...overrides,
+  };
+}
+
+function parseCsvLine(line) {
+  if (!line) {
+    return [];
+  }
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parseContactsCsv(text) {
+  if (!text) {
+    return [];
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return [];
+  }
+  const rows = lines.map(parseCsvLine).filter((row) => row.some((value) => value && value.trim()));
+  if (rows.length === 0) {
+    return [];
+  }
+  const headerRow = rows[0].map((value) => value.toLowerCase());
+  const hasHeader = ["name", "email", "title"].some((key) => headerRow.includes(key));
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const lookup = hasHeader
+    ? {
+        name: headerRow.indexOf("name"),
+        email: headerRow.indexOf("email"),
+        title: headerRow.indexOf("title"),
+      }
+    : { name: 0, email: 1, title: 2 };
+  return dataRows
+    .map((row) => ({
+      name: row[lookup.name] ?? "",
+      email: row[lookup.email] ?? "",
+      title: row[lookup.title] ?? "",
+    }))
+    .filter((row) => row.name || row.email || row.title);
+}
+
+function hasTemplateContactData(contact) {
+  if (!contact) {
+    return false;
+  }
+  return Boolean(contact.name?.trim() || contact.email?.trim() || contact.title?.trim());
+}
+
+function resolveTemplateToken(token, contact, context = {}) {
+  switch (token) {
+    case "contact.name":
+      return contact?.name?.trim();
+    case "contact.email":
+      return contact?.email?.trim();
+    case "contact.title":
+      return contact?.title?.trim();
+    case "company":
+      return context.company?.trim();
+    case "role":
+      return context.role?.trim();
+    case "student.name":
+      return context.studentName?.trim();
+    case "company.facts":
+      return Array.isArray(context.companyFacts) && context.companyFacts.length > 0
+        ? `• ${context.companyFacts.join("\n• ")}`
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function renderTemplateString(templateString, contact, context = {}) {
+  if (!templateString) {
+    return "";
+  }
+  return templateString.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, token) => {
+    if (token === "draft") {
+      return context.draftPlaceholder ?? "[AI will write this]";
+    }
+    const value = resolveTemplateToken(token, contact, context);
+    if (value == null || value === "") {
+      return `[missing ${token}]`;
+    }
+    return value;
+  });
+}
+
+function normalizeDatasetContacts(contacts) {
+  return contacts
+    .map((contact) => ({
+      name: contact.name?.trim() ?? "",
+      email: contact.email?.trim() ?? "",
+      title: contact.title?.trim() ?? "",
+    }))
+    .filter((contact) => contact.name || contact.email || contact.title);
+}
+
+function extractMessageList(payload) {
+  if (!payload) {
+    return [];
+  }
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (Array.isArray(payload?.results)) {
+    return payload.results;
+  }
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+  if (Array.isArray(payload?.data)) {
+    return payload.data;
+  }
+  if (Array.isArray(payload?.messages)) {
+    return payload.messages;
+  }
+  if (payload?.data) {
+    return extractMessageList(payload.data);
+  }
+  if (typeof payload === "object") {
+    const candidate = {};
+    if (payload.to) candidate.to = payload.to;
+    if (payload.subject) candidate.subject = payload.subject;
+    if (payload.body) candidate.body = payload.body;
+    if (Object.keys(candidate).length > 0) {
+      return [candidate];
+    }
+  }
+  return [];
+}
+
+function EmailTemplateWorkspace({ pushToast }) {
+  const [template, setTemplate] = useState({ to: "", subject: "", body: "" });
+  const [activeField, setActiveField] = useState("body");
+  const fieldRefs = useRef({ to: null, subject: null, body: null });
+  const selectionRef = useRef({
+    to: { start: 0, end: 0 },
+    subject: { start: 0, end: 0 },
+    body: { start: 0, end: 0 },
+  });
+  const [contacts, setContacts] = useState(() => [createTemplateContact()]);
+  const fileInputRef = useRef(null);
+  const [role, setRole] = useState("");
+  const [company, setCompany] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [companyFacts, setCompanyFacts] = useState([]);
+  const [selectedPreviewContactId, setSelectedPreviewContactId] = useState("");
+  const [dryRunResults, setDryRunResults] = useState([]);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunError, setDryRunError] = useState("");
+
+  const updateSelectionRef = useCallback((field, target) => {
+    if (!target) {
+      return;
+    }
+    selectionRef.current[field] = {
+      start: target.selectionStart ?? 0,
+      end: target.selectionEnd ?? target.selectionStart ?? 0,
+    };
+  }, []);
+
+  const handleTemplateChange = useCallback((field, event) => {
+    const { value } = event.target;
+    setTemplate((prev) => ({ ...prev, [field]: value }));
+    updateSelectionRef(field, event.target);
+  }, [updateSelectionRef]);
+
+  const handleFieldFocus = useCallback((field, event) => {
+    setActiveField(field);
+    updateSelectionRef(field, event.target);
+  }, [updateSelectionRef]);
+
+  const handleFieldSelect = useCallback((field, event) => {
+    updateSelectionRef(field, event.target);
+  }, [updateSelectionRef]);
+
+  const insertVariableToken = useCallback(
+    (token) => {
+      const field = activeField || "body";
+      const ref = fieldRefs.current[field];
+      const tokenString = `{{${token}}}`;
+      const selection = selectionRef.current[field] || { start: 0, end: 0 };
+      const currentValue = template[field] ?? "";
+      const start = Math.max(0, Math.min(selection.start ?? currentValue.length, currentValue.length));
+      const end = Math.max(start, Math.min(selection.end ?? start, currentValue.length));
+      const nextValue = `${currentValue.slice(0, start)}${tokenString}${currentValue.slice(end)}`;
+      setTemplate((prev) => ({ ...prev, [field]: nextValue }));
+      const nextPosition = start + tokenString.length;
+      selectionRef.current[field] = { start: nextPosition, end: nextPosition };
+      if (typeof window !== "undefined") {
+        const focusTarget = ref;
+        const schedule = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+        schedule(() => {
+          if (focusTarget) {
+            focusTarget.focus();
+            focusTarget.setSelectionRange(nextPosition, nextPosition);
+          }
+        });
+      }
+    },
+    [activeField, template]
+  );
+
+  const handleCopyVariable = useCallback(async (token) => {
+    const value = `{{${token}}}`;
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        throw new Error("Clipboard not available");
+      }
+      await navigator.clipboard.writeText(value);
+      pushToast?.("success", `Copied ${value}`);
+    } catch (error) {
+      console.error("Failed to copy", error);
+      pushToast?.("error", "Unable to copy variable.");
+    }
+  }, [pushToast]);
+
+  const handleContactChange = useCallback((id, field, value) => {
+    setContacts((prev) =>
+      prev.map((contact) => (contact.id === id ? { ...contact, [field]: value } : contact))
+    );
+  }, []);
+
+  const handleAddContactRow = useCallback(() => {
+    setContacts((prev) => [...prev, createTemplateContact()]);
+  }, []);
+
+  const handleClearContacts = useCallback(() => {
+    setContacts([createTemplateContact()]);
+    setSelectedPreviewContactId("");
+  }, []);
+
+  const handleImportCsv = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    try {
+      const text = await file.text();
+      const parsed = parseContactsCsv(text);
+      if (parsed.length === 0) {
+        throw new Error("No contacts found in CSV.");
+      }
+      setContacts(parsed.map((row) => createTemplateContact(row)));
+      setSelectedPreviewContactId("");
+      pushToast?.("success", `Imported ${parsed.length} contact${parsed.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to import CSV.";
+      pushToast?.("error", message);
+    } finally {
+      event.target.value = "";
+    }
+  }, [pushToast]);
+
+  const handleAddCompanyFact = useCallback(() => {
+    setCompanyFacts((prev) => [...prev, ""]);
+  }, []);
+
+  const handleCompanyFactChange = useCallback((index, value) => {
+    setCompanyFacts((prev) => prev.map((fact, i) => (i === index ? value : fact)));
+  }, []);
+
+  const handleRemoveCompanyFact = useCallback((index) => {
+    setCompanyFacts((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const previewContacts = useMemo(() => contacts.filter(hasTemplateContactData), [contacts]);
+
+  useEffect(() => {
+    if (previewContacts.length === 0) {
+      if (selectedPreviewContactId) {
+        setSelectedPreviewContactId("");
+      }
+      return;
+    }
+    const exists = previewContacts.some((contact) => contact.id === selectedPreviewContactId);
+    if (!exists) {
+      setSelectedPreviewContactId(previewContacts[0].id);
+    }
+  }, [previewContacts, selectedPreviewContactId]);
+
+  const selectedPreviewContact = useMemo(() => {
+    if (!selectedPreviewContactId) {
+      return null;
+    }
+    return previewContacts.find((contact) => contact.id === selectedPreviewContactId) ?? null;
+  }, [previewContacts, selectedPreviewContactId]);
+
+  const bodyHasDraft = useMemo(() => /\{\{\s*draft\s*\}\}/i.test(template.body), [template.body]);
+
+  const draftPlaceholder = "[AI will write this]";
+
+  const previewContext = useMemo(
+    () => ({
+      company,
+      role,
+      studentName,
+      companyFacts: companyFacts.map((fact) => fact.trim()).filter(Boolean),
+      draftPlaceholder,
+    }),
+    [company, role, studentName, companyFacts]
+  );
+
+  const previewValues = useMemo(() => {
+    if (!selectedPreviewContact) {
+      return null;
+    }
+    return {
+      to: renderTemplateString(template.to, selectedPreviewContact, previewContext),
+      subject: renderTemplateString(template.subject, selectedPreviewContact, previewContext),
+      body: renderTemplateString(template.body, selectedPreviewContact, previewContext),
+    };
+  }, [previewContext, selectedPreviewContact, template.body, template.subject, template.to]);
+
+  const handleDryRun = useCallback(async () => {
+    setDryRunError("");
+    const datasetContacts = normalizeDatasetContacts(contacts);
+    if (datasetContacts.length === 0) {
+      const message = "Add at least one contact before running a dry run.";
+      setDryRunError(message);
+      pushToast?.("error", message);
+      return;
+    }
+    const trimmedRole = role.trim();
+    const trimmedCompany = company.trim();
+    const trimmedStudent = studentName.trim();
+    const trimmedFacts = companyFacts.map((fact) => fact.trim()).filter(Boolean);
+    const payload = {
+      template: { ...template },
+      dataset: {
+        contacts: datasetContacts,
+        ...(trimmedRole ? { role: trimmedRole } : {}),
+        ...(trimmedCompany ? { company: trimmedCompany } : {}),
+        ...(trimmedFacts.length > 0 ? { companyFacts: trimmedFacts } : {}),
+        ...(trimmedStudent ? { student: { name: trimmedStudent } } : {}),
+      },
+      options: { dryRun: true },
+    };
+    setDryRunLoading(true);
+    try {
+      const response = await fetch("/api/n8n", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      if (!response.ok) {
+        const detail = json?.detail || json?.error || json?.data?.error || json?.data?.message;
+        throw new Error(detail || "Dry run failed.");
+      }
+      const list = extractMessageList(json?.data);
+      if (list.length === 0) {
+        setDryRunResults([]);
+        pushToast?.("info", "Dry run completed with no messages returned.");
+        return;
+      }
+      const nextResults = list.map((item, index) => {
+        const body = item.body ?? "";
+        return {
+          id: `dry-run-${Date.now()}-${index}`,
+          to: item.to ?? "",
+          subject: item.subject ?? "",
+          body,
+          originalBody: body,
+          excluded: false,
+          isEditing: false,
+        };
+      });
+      setDryRunResults(nextResults);
+      pushToast?.("success", "Dry run generated preview messages.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Dry run failed.";
+      setDryRunError(message);
+      pushToast?.("error", message);
+    } finally {
+      setDryRunLoading(false);
+    }
+  }, [company, companyFacts, contacts, pushToast, role, studentName, template]);
+
+  const handleToggleExclude = useCallback((id) => {
+    setDryRunResults((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, excluded: !item.excluded } : item))
+    );
+  }, []);
+
+  const handleToggleEdit = useCallback((id) => {
+    setDryRunResults((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, isEditing: !item.isEditing } : item
+      )
+    );
+  }, []);
+
+  const handleDryRunBodyChange = useCallback((id, value) => {
+    setDryRunResults((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, body: value } : item))
+    );
+  }, []);
+
+  const handleResetDryRunBody = useCallback((id) => {
+    setDryRunResults((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, body: item.originalBody ?? "", isEditing: false } : item
+      )
+    );
+  }, []);
+
+  const excludedCount = useMemo(
+    () => dryRunResults.filter((item) => item.excluded).length,
+    [dryRunResults]
+  );
+
+  return (
+    <section className="template-workspace" aria-labelledby="template-workspace-heading">
+      <h2 id="template-workspace-heading">Template Builder</h2>
+      <p className="template-intro">
+        Define your outreach template, manage contacts, and preview how each message will look before
+        sending it to AI.
+      </p>
+
+      <div className="template-card template-card--builder">
+        <div className="template-builder">
+          <h3>Template Inputs</h3>
+          <div className="template-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="template-to">
+                To
+              </label>
+              <input
+                id="template-to"
+                ref={(element) => {
+                  fieldRefs.current.to = element;
+                }}
+                className="text-input"
+                value={template.to}
+                onChange={(event) => handleTemplateChange("to", event)}
+                onFocus={(event) => handleFieldFocus("to", event)}
+                onSelect={(event) => handleFieldSelect("to", event)}
+                placeholder="{{contact.email}}"
+              />
+            </div>
+
+            <div className="field">
+              <label className="field-label" htmlFor="template-subject">
+                Subject
+              </label>
+              <input
+                id="template-subject"
+                ref={(element) => {
+                  fieldRefs.current.subject = element;
+                }}
+                className="text-input"
+                value={template.subject}
+                onChange={(event) => handleTemplateChange("subject", event)}
+                onFocus={(event) => handleFieldFocus("subject", event)}
+                onSelect={(event) => handleFieldSelect("subject", event)}
+                placeholder="Excited to connect with {{contact.name}}"
+              />
+            </div>
+
+            <div className="field double">
+              <label className="field-label" htmlFor="template-body">
+                Body
+              </label>
+              <textarea
+                id="template-body"
+                ref={(element) => {
+                  fieldRefs.current.body = element;
+                }}
+                className="text-area"
+                value={template.body}
+                onChange={(event) => handleTemplateChange("body", event)}
+                onFocus={(event) => handleFieldFocus("body", event)}
+                onSelect={(event) => handleFieldSelect("body", event)}
+                rows={6}
+                placeholder={`Hi {{contact.name}},\n\n{{draft}}\n\nThanks!`}
+              />
+              {!bodyHasDraft && (
+                <div className="body-warning" role="note">
+                  Add {"{{draft}}"} somewhere in the body so the AI knows where to write.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="variable-palette" aria-label="Template variables">
+            <span className="palette-label">Variables</span>
+            <div className="palette-chips">
+              {TEMPLATE_TOKEN_OPTIONS.map((token) => (
+                <div key={token.key} className={`variable-chip${token.isSpecial ? " special" : ""}`}>
+                  <button type="button" onClick={() => insertVariableToken(token.key)}>
+                    {"{{"}
+                    {token.label}
+                    {"}}"}
+                  </button>
+                  <button
+                    type="button"
+                    className="copy-variable"
+                    aria-label={`Copy {{${token.key}}}`}
+                    onClick={() => handleCopyVariable(token.key)}
+                  >
+                    <IconCopy />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="template-context">
+          <h3>Context</h3>
+          <div className="template-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="template-role">
+                Role
+              </label>
+              <input
+                id="template-role"
+                className="text-input"
+                value={role}
+                onChange={(event) => setRole(event.target.value)}
+                placeholder="Partnerships Lead"
+              />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="template-company">
+                Company
+              </label>
+              <input
+                id="template-company"
+                className="text-input"
+                value={company}
+                onChange={(event) => setCompany(event.target.value)}
+                placeholder="Acme Corp"
+              />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="template-student">
+                Student Name
+              </label>
+              <input
+                id="template-student"
+                className="text-input"
+                value={studentName}
+                onChange={(event) => setStudentName(event.target.value)}
+                placeholder="Taylor"
+              />
+            </div>
+          </div>
+          <div className="company-facts">
+            <div className="company-facts-header">
+              <span>Company facts</span>
+              <button type="button" className="button tertiary" onClick={handleAddCompanyFact}>
+                Add fact
+              </button>
+            </div>
+            {companyFacts.length === 0 ? (
+              <p className="helper-text">Add bullet points for the AI to reference.</p>
+            ) : (
+              <ul className="company-facts-list">
+                {companyFacts.map((fact, index) => (
+                  <li key={`fact-${index}`} className="company-fact-item">
+                    <textarea
+                      className="text-area"
+                      rows={2}
+                      value={fact}
+                      onChange={(event) => handleCompanyFactChange(index, event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="button tertiary"
+                      onClick={() => handleRemoveCompanyFact(index)}
+                      aria-label="Remove fact"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="template-card template-card--contacts">
+        <div className="contacts-header">
+          <h3>Contacts</h3>
+          <div className="contacts-actions">
+            <button type="button" className="button tertiary" onClick={handleAddContactRow}>
+              Add row
+            </button>
+            <button type="button" className="button tertiary" onClick={() => fileInputRef.current?.click()}>
+              Import CSV
+            </button>
+            <button type="button" className="button tertiary" onClick={handleClearContacts}>
+              Clear
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="sr-only"
+              onChange={handleImportCsv}
+            />
+          </div>
+        </div>
+
+        <div className="contacts-table-wrapper">
+          <table className="contacts-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Title</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((contact) => (
+                <tr key={contact.id}>
+                  <td>
+                    <input
+                      type="text"
+                      className="text-input"
+                      value={contact.name}
+                      onChange={(event) => handleContactChange(contact.id, "name", event.target.value)}
+                      placeholder="Jordan Smith"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="email"
+                      className="text-input"
+                      value={contact.email}
+                      onChange={(event) => handleContactChange(contact.id, "email", event.target.value)}
+                      placeholder="jordan@example.com"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      className="text-input"
+                      value={contact.title}
+                      onChange={(event) => handleContactChange(contact.id, "title", event.target.value)}
+                      placeholder="Head of Community"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="template-card template-card--preview">
+        <div className="preview-header">
+          <h3>Preview</h3>
+          <div className="preview-select">
+            <label htmlFor="preview-contact" className="field-label">
+              Contact
+            </label>
+            <select
+              id="preview-contact"
+              className="text-input"
+              value={selectedPreviewContactId}
+              onChange={(event) => setSelectedPreviewContactId(event.target.value)}
+              disabled={previewContacts.length === 0}
+            >
+              {previewContacts.length === 0 ? (
+                <option value="">Add contact details to preview</option>
+              ) : (
+                previewContacts.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.name || contact.email || "Contact"}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        {previewValues ? (
+          <div className="preview-card" role="region" aria-live="polite">
+            <div className="preview-line"><strong>To:</strong> <span>{previewValues.to || "—"}</span></div>
+            <div className="preview-line"><strong>Subject:</strong> <span>{previewValues.subject || "—"}</span></div>
+            <div className="preview-body">
+              <strong>Body:</strong>
+              <pre>{previewValues.body || "—"}</pre>
+            </div>
+          </div>
+        ) : (
+          <p className="helper-text">
+            Choose a contact to see the rendered template. {"{{draft}}"} appears as {draftPlaceholder}.
+          </p>
+        )}
+
+        <div className="dry-run-actions">
+          <button type="button" className="button secondary" onClick={handleDryRun} disabled={dryRunLoading}>
+            {dryRunLoading ? <IconLoader /> : null}
+            {dryRunLoading ? "Generating…" : "Generate with AI (dry run)"}
+          </button>
+        </div>
+
+        {dryRunError && <div className="inline-result" role="alert">{dryRunError}</div>}
+
+        <div className="dry-run-results" aria-live="polite">
+          {dryRunResults.length === 0 ? (
+            <p className="helper-text">Run a dry run to see AI-generated drafts here.</p>
+          ) : (
+            <>
+              <div className="dry-run-summary">
+                <span>{dryRunResults.length} message{dryRunResults.length === 1 ? "" : "s"} ready.</span>
+                {excludedCount > 0 && <span>{excludedCount} excluded.</span>}
+              </div>
+              <div className="dry-run-list">
+                {dryRunResults.map((item) => (
+                  <article key={item.id} className={`dry-run-item${item.excluded ? " excluded" : ""}`}>
+                    <header className="dry-run-item-header">
+                      <div className="dry-run-recipient">
+                        <div><strong>To:</strong> {item.to || "—"}</div>
+                        <div><strong>Subject:</strong> {item.subject || "—"}</div>
+                      </div>
+                      <div className="dry-run-item-actions">
+                        <label className="exclude-toggle">
+                          <input
+                            type="checkbox"
+                            checked={item.excluded}
+                            onChange={() => handleToggleExclude(item.id)}
+                          />
+                          <span>Exclude</span>
+                        </label>
+                        <button type="button" className="button tertiary" onClick={() => handleToggleEdit(item.id)}>
+                          {item.isEditing ? "Close editor" : "Edit this one"}
+                        </button>
+                        <button
+                          type="button"
+                          className="button tertiary"
+                          onClick={() => handleResetDryRunBody(item.id)}
+                          disabled={item.body === item.originalBody}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </header>
+                    {item.isEditing ? (
+                      <textarea
+                        className="text-area"
+                        rows={6}
+                        value={item.body}
+                        onChange={(event) => handleDryRunBodyChange(item.id, event.target.value)}
+                      />
+                    ) : (
+                      <pre className="dry-run-body">{item.body || "—"}</pre>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="template-card template-card--send send-placeholder" aria-live="polite">
+        <h3>Send (coming soon)</h3>
+        <p className="helper-text">
+          Connect your send flow to enable delivery. Once ready, this section will send approved drafts to
+          Gmail and report progress for each recipient.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -1588,6 +2404,8 @@ export default function Rolodex() {
         {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
           <div className="empty-footer">{emptyMessageMap[activePage]}</div>
         )}
+
+        {activePage === "email" && <EmailTemplateWorkspace pushToast={pushToast} />}
       </section>
     </div>
   );
