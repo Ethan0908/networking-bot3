@@ -1,4 +1,5 @@
 "use client";
+import { signIn } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./rolodex.css";
 
@@ -83,6 +84,26 @@ function IconCopy(props) {
 const TOAST_TIMEOUT = 4500;
 
 const EMAIL_REGEX = /.+@.+\..+/;
+
+const SAMPLE_CONTACT_RECORD = {
+  contact_id: 1,
+  local_id: 1,
+  full_name: "John Doe",
+  title: "CEO",
+  company: "Company",
+  location: "New York City",
+  profile_url: "www.exampleurl.com",
+  email: "example@gmail.com",
+  engagement_label: "0 messages",
+  last_updated: "2025-01-01T12:00:00",
+};
+
+const SAMPLE_CONTACT_ID = String(
+  SAMPLE_CONTACT_RECORD.contact_id ??
+    SAMPLE_CONTACT_RECORD.local_id ??
+    SAMPLE_CONTACT_RECORD.id ??
+    1
+);
 
 function validateEmail(value) {
   if (!value) {
@@ -199,6 +220,52 @@ function ToastStack({ toasts, onDismiss }) {
   );
 }
 
+function IconSun(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+    >
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function IconMoon(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+    >
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
 function IconAlert(props) {
   return (
     <svg
@@ -244,13 +311,16 @@ export default function Rolodex() {
   const [fieldTouched, setFieldTouched] = useState({ email: false, profileUrl: false });
   const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
+  const [theme, setTheme] = useState("light");
+  const [emailContacts, setEmailContacts] = useState(() => [
+    { ...SAMPLE_CONTACT_RECORD, __contactId: SAMPLE_CONTACT_ID },
+  ]);
+  const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
+  const [emailRecipients, setEmailRecipients] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const validationTimers = useRef({});
   const emailButtonRef = useRef(null);
-
-  const trimmedUsernameForLink = username.trim();
-  const oauthUrl = trimmedUsernameForLink
-    ? `/api/oauth/google/start?userId=${encodeURIComponent(trimmedUsernameForLink)}`
-    : "/api/oauth/google/start?userId=YOUR_USER_ID";
+  const selectAllRef = useRef(null);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -319,6 +389,42 @@ export default function Rolodex() {
   );
 
   const disableSubmit = Boolean(loadingAction);
+  const showContactIdField = activePage === "update";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedTheme = window.localStorage.getItem("rolodex-theme");
+    if (storedTheme === "dark" || storedTheme === "light") {
+      setTheme(storedTheme);
+      return;
+    }
+    if (window.matchMedia) {
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (prefersDark) {
+        setTheme("dark");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("theme-dark");
+      root.classList.remove("theme-light");
+    } else {
+      root.classList.add("theme-light");
+      root.classList.remove("theme-dark");
+    }
+    root.dataset.theme = theme;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("rolodex-theme", theme);
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (usernameHighlight && username.trim()) {
@@ -332,35 +438,69 @@ export default function Rolodex() {
     }
   }, [contactHighlight, contactId]);
 
-  const handleCopyContactId = useCallback(() => {
-    if (!contactId.trim()) {
-      return;
+  useEffect(() => {
+    setErrorMessage("");
+    setResponse(null);
+    setInlineSummary("");
+    setLastAction(null);
+    if (activePage === "create") {
+      setContactId("");
+      setContactHighlight(false);
     }
-    if (!navigator.clipboard?.writeText) {
-      pushToast("info", "Contact ID copied.");
-      return;
+    if (activePage !== "email") {
+      setEmailRecipients([]);
     }
-    navigator.clipboard
-      .writeText(contactId.trim())
-      .then(() => {
-        pushToast("info", "Contact ID copied.");
-      })
-      .catch(() => {
-        pushToast("error", "Unable to copy contact ID.");
-      });
-  }, [contactId, pushToast]);
+  }, [activePage]);
 
-  const handleGmailClick = useCallback(
-    (event) => {
-      event.preventDefault();
-      if (gmailStatus === "connecting") return;
-      setGmailStatus("connecting");
-      setTimeout(() => {
-        window.location.href = oauthUrl;
-      }, 120);
+  const copyContactIdToClipboard = useCallback(
+    (value) => {
+      if (!value) {
+        return;
+      }
+      const trimmed = String(value).trim();
+      if (!trimmed) {
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+        pushToast("info", "Contact ID copied.");
+        return;
+      }
+      navigator.clipboard
+        .writeText(trimmed)
+        .then(() => {
+          pushToast("info", "Contact ID copied.");
+        })
+        .catch(() => {
+          pushToast("error", "Unable to copy contact ID.");
+        });
     },
-    [gmailStatus, oauthUrl]
+    [pushToast]
   );
+
+  const handleCopyContactId = useCallback(() => {
+    copyContactIdToClipboard(contactId);
+  }, [contactId, copyContactIdToClipboard]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }, []);
+
+  const handleGmailClick = useCallback(async () => {
+    if (gmailStatus === "connecting") return;
+    setGmailStatus("connecting");
+    try {
+      const result = await signIn("google", { redirect: false });
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      setGmailStatus("connected");
+      pushToast("success", "Gmail connected.");
+    } catch (error) {
+      console.error("Failed to start Google sign-in", error);
+      setGmailStatus("disconnected");
+      pushToast("error", "Unable to start Google sign-in.");
+    }
+  }, [gmailStatus, pushToast]);
 
   const handleSubjectKeyDown = useCallback((event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -381,6 +521,127 @@ export default function Rolodex() {
     },
     []
   );
+
+  const resolveContactId = useCallback((record) => {
+    if (!record || typeof record !== "object") {
+      return "";
+    }
+    const idCandidate =
+      record.contact_id ??
+      record.contactId ??
+      record.local_id ??
+      record.localId ??
+      record.id ??
+      null;
+    return idCandidate != null ? String(idCandidate) : "";
+  }, []);
+
+  const handleLoadEmailContacts = useCallback(async () => {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      const messageText = "Username is required to load contacts.";
+      setUsernameHighlight(true);
+      pushToast("error", messageText);
+      return;
+    }
+    setLoadingContacts(true);
+    try {
+      const r = await fetch("/api/rolodex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "view", username: trimmedUsername }),
+      });
+      const text = await r.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+      if (!r.ok) {
+        const messageText =
+          (data && typeof data === "object" && "error" in data && data.error) ||
+          r.statusText ||
+          "Failed to load contacts";
+        throw new Error(messageText);
+      }
+      const records = Array.isArray(data) ? data : data ? [data] : [];
+      const normalized = records
+        .filter((record) => record && typeof record === "object")
+        .map((record) => ({ ...record, __contactId: resolveContactId(record) }))
+        .filter((record) => record.__contactId);
+      if (normalized.length > 0) {
+        setEmailContacts(normalized);
+      } else {
+        setEmailContacts([]);
+      }
+      setEmailRecipients([]);
+      setIsSampleEmailContacts(false);
+      if (normalized.length === 0) {
+        pushToast("info", "No contacts found for this username.");
+      } else {
+        pushToast("success", "Contacts loaded for emailing.");
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Failed to load contacts";
+      pushToast("error", messageText);
+    } finally {
+      setLoadingContacts(false);
+    }
+  }, [pushToast, resolveContactId, username]);
+
+  const handleToggleRecipient = useCallback((id) => {
+    setEmailRecipients((prev) => {
+      const normalizedId = String(id);
+      return prev.includes(normalizedId)
+        ? prev.filter((item) => item !== normalizedId)
+        : [...prev, normalizedId];
+    });
+  }, []);
+
+  const handleRecipientRowClick = useCallback(
+    (event, id) => {
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.closest("a") || event.target.closest("button"))
+      ) {
+        return;
+      }
+      handleToggleRecipient(id);
+    },
+    [handleToggleRecipient]
+  );
+
+  const allRecipientIds = useMemo(
+    () =>
+      emailContacts
+        .map((contact) => contact.__contactId || resolveContactId(contact))
+        .filter(Boolean)
+        .map(String),
+    [emailContacts, resolveContactId]
+  );
+
+  const allRecipientsSelected = useMemo(() => {
+    if (allRecipientIds.length === 0) {
+      return false;
+    }
+    return allRecipientIds.every((id) => emailRecipients.includes(id));
+  }, [allRecipientIds, emailRecipients]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) {
+      return;
+    }
+    selectAllRef.current.indeterminate =
+      emailRecipients.length > 0 && !allRecipientsSelected;
+  }, [allRecipientsSelected, emailRecipients]);
+
+  const handleToggleSelectAll = useCallback(() => {
+    if (allRecipientIds.length === 0) {
+      return;
+    }
+    setEmailRecipients((prev) => (allRecipientsSelected ? [] : allRecipientIds));
+  }, [allRecipientIds, allRecipientsSelected]);
 
   const resetResponses = useCallback(() => {
     setResponse(null);
@@ -405,24 +666,48 @@ export default function Rolodex() {
 
       const trimmedUsernameValue = username.trim();
       const trimmedContactId = contactId.trim();
+      const trimmedProfileUrlValue = profileUrl.trim();
+      if (trimmedProfileUrlValue) {
+        const { status, message } = validateProfileUrl(trimmedProfileUrlValue);
+        setFieldTouched((prev) => ({ ...prev, profileUrl: true }));
+        setFieldErrors((prev) => ({ ...prev, profileUrl: message }));
+        setFieldStatus((prev) => ({ ...prev, profileUrl: status }));
+        if (status === "error") {
+          setErrorMessage(message);
+          pushToast("error", message);
+          setLoadingAction(null);
+          return;
+        }
+      }
+
       const contactDetailsEntries = Object.entries({
         full_name: fullName,
         title,
         company,
         location,
         email,
-        profile_url: profileUrl,
+        profile_url: profileUrl.trim(),
       })
         .map(([key, value]) => [key, value.trim?.() ?? value])
         .filter(([, value]) => Boolean(value));
       const contactDetails = Object.fromEntries(contactDetailsEntries);
 
-      if (action === "update" || action === "email") {
+      if (action === "update") {
         if (!trimmedContactId) {
-          const message = "Contact ID is required for this action.";
+          const message = "Contact ID is required to update.";
           setErrorMessage(message);
           pushToast("error", message);
           setContactHighlight(true);
+          setLoadingAction(null);
+          return;
+        }
+      }
+
+      if (action === "email") {
+        if (emailRecipients.length === 0) {
+          const messageText = "Select at least one contact to email.";
+          setErrorMessage(messageText);
+          pushToast("error", messageText);
           setLoadingAction(null);
           return;
         }
@@ -442,7 +727,7 @@ export default function Rolodex() {
         ...(trimmedUsernameValue ? { username: trimmedUsernameValue } : {}),
       };
 
-      if (trimmedContactId) {
+      if (trimmedContactId && action !== "create" && action !== "email") {
         body.local_id = trimmedContactId;
       }
 
@@ -459,6 +744,16 @@ export default function Rolodex() {
           pushToast("error", messageText);
           setLoadingAction(null);
           return;
+        }
+        const normalizedRecipients = emailRecipients.map((value) => {
+          const numeric = Number(value);
+          return Number.isNaN(numeric) ? value : numeric;
+        });
+        body.recipient_ids = normalizedRecipients;
+        if (normalizedRecipients.length === 1) {
+          body.local_id = normalizedRecipients[0];
+        } else if (normalizedRecipients.length > 1) {
+          body.local_ids = normalizedRecipients;
         }
         if (trimmedSubject) {
           body.subject = trimmedSubject;
@@ -524,14 +819,20 @@ export default function Rolodex() {
       subject,
       title,
       username,
+      emailRecipients,
     ]
   );
 
   const gmailLabel = useMemo(() => {
-    if (gmailStatus === "connected") return "Connected";
+    if (gmailStatus === "connected") return "Gmail Connected";
     if (gmailStatus === "connecting") return "Connecting…";
     return "Connect Gmail";
   }, [gmailStatus]);
+
+  const themeToggleLabel = useMemo(
+    () => (theme === "dark" ? "Switch to light mode" : "Switch to dark mode"),
+    [theme]
+  );
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -544,8 +845,8 @@ export default function Rolodex() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [gmailStatus, pushToast]);
 
-  const renderContactDetails = () => (
-    <div className="rolodex-form-grid">
+  const contactDetailFields = (
+    <>
       <div className="field">
         <label className="field-label" htmlFor="fullName">
           Full Name
@@ -661,7 +962,7 @@ export default function Rolodex() {
           {fieldErrors.profileUrl}
         </div>
       </div>
-    </div>
+    </>
   );
 
   const tabs = [
@@ -679,34 +980,29 @@ export default function Rolodex() {
     return records.filter((record) => record && typeof record === "object");
   }, [lastAction, response]);
 
-  const showJsonResponse = lastAction && lastAction !== "view" && response;
+  const showJsonResponse =
+    lastAction && lastAction === activePage && lastAction !== "view" && response;
 
   const emptyMessageMap = {
     create: "Fill in contact details to create a new record.",
     view: "Load a contact to preview their profile information.",
     update: "Update fields above and save your changes.",
-    email: "Draft a message to send to the selected contact.",
+    email: "Load contacts, pick recipients, and compose your message.",
   };
 
   const sampleViewRecord = useMemo(
-    () => ({
-      local_id: 1,
-      full_name: "Ethan Wang",
-      title: "Analyst",
-      company: "reddit",
-      location: "nyc",
-      profile_url: "https://www.linkedin.com",
-      email: "ethan@gmail.com",
-      last_updated: "2025-10-02T08:11:55.857Z",
-    }),
+    () => ({ ...SAMPLE_CONTACT_RECORD }),
     []
   );
 
   const resolvedViewRecords = useMemo(() => {
+    if (activePage !== "view") {
+      return [];
+    }
     if (viewRecords.length > 0) {
       return viewRecords;
     }
-    if (activePage === "view" && !errorMessage) {
+    if (!errorMessage) {
       return [sampleViewRecord];
     }
     return [];
@@ -721,6 +1017,63 @@ export default function Rolodex() {
     return /^https?:\/\//i.test(value) ? value : `https://${value}`;
   };
 
+  const formatTimestamp = useCallback((value) => {
+    if (!value) {
+      return "—";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }, []);
+
+  const computeEngagementStatus = useCallback(
+    (record) => {
+      const explicitLabel =
+        record?.engagement_label ??
+        record?.engagementLabel ??
+        record?.engagement_text ??
+        record?.engagementText ??
+        record?.engagement ??
+        null;
+      const candidate =
+        record?.last_contacted ??
+        record?.last_messaged ??
+        record?.lastMessaged ??
+        record?.last_contacted_at ??
+        null;
+      if (!candidate) {
+        if (explicitLabel) {
+          return { color: "gray", label: explicitLabel };
+        }
+        return { color: "gray", label: "No recent messages" };
+      }
+      const date = new Date(candidate);
+      if (Number.isNaN(date.getTime())) {
+        if (explicitLabel) {
+          return { color: "gray", label: explicitLabel };
+        }
+        return { color: "gray", label: "No recent messages" };
+      }
+      const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays <= 31) {
+        return { color: "green", label: "Last messaged within a month" };
+      }
+      if (diffDays <= 62) {
+        return { color: "yellow", label: "Last messaged within two months" };
+      }
+      return { color: "red", label: "Last messaged three+ months ago" };
+    },
+    []
+  );
+
   return (
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
@@ -730,25 +1083,36 @@ export default function Rolodex() {
             <h1 id="rolodex-heading">Rolodex</h1>
             <p>Track contacts and follow-ups.</p>
           </div>
-          <button
-            type="button"
-            className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-            onClick={handleGmailClick}
-            disabled={gmailStatus === "connecting"}
-            aria-busy={gmailStatus === "connecting"}
-          >
-            <span className="icon">
-              {gmailStatus === "connecting" ? (
-                <IconLoader />
-              ) : gmailStatus === "connected" ? (
-                <IconCheck />
-              ) : (
-                <IconMail />
-              )}
-            </span>
-            {gmailLabel}
-            <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-          </button>
+          <div className="header-actions">
+            <button
+              type="button"
+              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+              onClick={handleGmailClick}
+              disabled={gmailStatus === "connecting"}
+              aria-busy={gmailStatus === "connecting"}
+            >
+              <span className="icon">
+                {gmailStatus === "connecting" ? (
+                  <IconLoader />
+                ) : gmailStatus === "connected" ? (
+                  <IconCheck />
+                ) : (
+                  <IconMail />
+                )}
+              </span>
+              {gmailLabel}
+              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+            </button>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={themeToggleLabel}
+            >
+              {theme === "dark" ? <IconSun /> : <IconMoon />}
+              <span>{theme === "dark" ? "Light" : "Dark"}</span>
+            </button>
+          </div>
         </header>
 
         <div className="context-grid" role="group" aria-label="Contact context">
@@ -770,35 +1134,36 @@ export default function Rolodex() {
                 : "Used to look up contacts across every tab."}
             </div>
           </div>
-
-          <div className={`field${contactHighlight ? " error" : ""}`}>
-            <label className="field-label" htmlFor="contactId">
-              Contact ID
-            </label>
-            <input
-              id="contactId"
-              className="text-input"
-              value={contactId}
-              onChange={(event) => setContactId(event.target.value)}
-              placeholder="Contact ID"
-              autoComplete="off"
-            />
-            {contactId.trim() && (
-              <button
-                type="button"
-                className="copy-button"
-                onClick={handleCopyContactId}
-                aria-label="Copy contact ID"
-              >
-                <IconCopy />
-              </button>
-            )}
-            <div className={`helper-text${contactHighlight ? " error" : ""}`}>
-              {contactHighlight
-                ? "Contact ID is required for this action."
-                : "Needed for updating or emailing a contact."}
+          {showContactIdField && (
+            <div className={`field${contactHighlight ? " error" : ""}`}>
+              <label className="field-label" htmlFor="contactId">
+                Contact ID
+              </label>
+              <input
+                id="contactId"
+                className="text-input"
+                value={contactId}
+                onChange={(event) => setContactId(event.target.value)}
+                placeholder="Contact ID"
+                autoComplete="off"
+              />
+              {contactId.trim() && (
+                <button
+                  type="button"
+                  className="copy-button"
+                  onClick={handleCopyContactId}
+                  aria-label="Copy contact ID"
+                >
+                  <IconCopy />
+                </button>
+              )}
+              <div className={`helper-text${contactHighlight ? " error" : ""}`}>
+                {contactHighlight
+                  ? "Contact ID is required to update."
+                  : "Needed when updating a contact."}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <nav className="rolodex-tabs" role="tablist" aria-label="Rolodex sections">
@@ -823,19 +1188,19 @@ export default function Rolodex() {
           {activePage === "create" && (
             <div role="tabpanel" id="create-panel" aria-labelledby="create-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                {renderContactDetails()}
+                <div className="rolodex-form-grid">{contactDetailFields}</div>
                 <div className="action-row">
                   <button
                     type="submit"
                     value="create"
-                  className="button"
-                  disabled={disableSubmit}
-                  aria-busy={loadingAction === "create"}
-                >
-                  {loadingAction === "create" ? <IconLoader /> : null}
-                  {loadingAction === "create" ? "Creating…" : "Create"}
-                </button>
-              </div>
+                    className="button"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "create"}
+                  >
+                    {loadingAction === "create" ? <IconLoader /> : null}
+                    {loadingAction === "create" ? "Creating…" : "Create"}
+                  </button>
+                </div>
               </form>
             </div>
           )}
@@ -863,7 +1228,7 @@ export default function Rolodex() {
           {activePage === "update" && (
             <div role="tabpanel" id="update-panel" aria-labelledby="update-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                {renderContactDetails()}
+                <div className="rolodex-form-grid">{contactDetailFields}</div>
                 <div className="action-row">
                   <button
                     type="submit"
@@ -883,7 +1248,178 @@ export default function Rolodex() {
           {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
               <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                <div className="email-form-grid">
+                <div className="recipients-block">
+                  <div className="recipients-toolbar">
+                    <span id="recipient-label" className="recipients-title">
+                      Recipients
+                    </span>
+                    <div className="recipient-controls">
+                      <button
+                        type="button"
+                        className="button tertiary load-contacts-button"
+                        onClick={handleLoadEmailContacts}
+                        disabled={loadingContacts}
+                        aria-busy={loadingContacts}
+                      >
+                        {loadingContacts ? <IconLoader /> : null}
+                        {loadingContacts ? "Loading…" : "Load Contacts"}
+                      </button>
+                    </div>
+                  </div>
+                  {emailContacts.length === 0 ? (
+                    <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                  ) : (
+                    <div
+                      className="table-scroll recipient-table-scroll"
+                      role="group"
+                      aria-labelledby="recipient-label"
+                    >
+                      <table className="view-table recipient-table">
+                        {isSampleEmailContacts && (
+                          <caption className="view-table-caption">
+                            Sample contact shown. Load a contact to see live data.
+                          </caption>
+                        )}
+                        <thead>
+                          <tr>
+                            <th scope="col" className="select-header">
+                              <div className="select-header-content">
+                                <span className="select-header-label">Select</span>
+                                <label className="select-all-control">
+                                  <input
+                                    ref={selectAllRef}
+                                    type="checkbox"
+                                    onChange={handleToggleSelectAll}
+                                    checked={allRecipientsSelected}
+                                    disabled={allRecipientIds.length === 0}
+                                    aria-label="Select all recipients"
+                                  />
+                                  <span>Select all</span>
+                                </label>
+                              </div>
+                            </th>
+                            <th scope="col">Contact ID</th>
+                            <th scope="col">Full Name</th>
+                            <th scope="col">Title</th>
+                            <th scope="col">Company</th>
+                            <th scope="col">Location</th>
+                            <th scope="col">Profile URL</th>
+                            <th scope="col">Email</th>
+                            <th scope="col">Engagement</th>
+                            <th scope="col">Last Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {emailContacts.map((contact) => {
+                            const id = contact.__contactId || resolveContactId(contact);
+                            if (!id) {
+                              return null;
+                            }
+                            const normalizedId = String(id);
+                            const isSelected = emailRecipients.includes(normalizedId);
+                            const profileLink = formatProfileHref(
+                              contact.profile_url ?? contact.profileUrl
+                            );
+                            const engagement = computeEngagementStatus(contact);
+                            const lastUpdatedDisplay = formatTimestamp(
+                              contact.last_updated ?? contact.updated_at ?? contact.updatedAt
+                            );
+                            const lastMessagedDisplay = formatTimestamp(
+                              contact.last_contacted ??
+                                contact.last_messaged ??
+                                contact.lastMessaged ??
+                                contact.last_contacted_at
+                            );
+                            const contactIdValue = String(id);
+                            const nameLabel =
+                              contact.full_name ?? contact.fullName ?? `Contact ${normalizedId}`;
+                            return (
+                              <tr
+                                key={normalizedId}
+                                className={isSelected ? "selected" : ""}
+                                aria-selected={isSelected}
+                                onClick={(event) => handleRecipientRowClick(event, normalizedId)}
+                              >
+                                <td className="select-cell">
+                                  <button
+                                    type="button"
+                                    className={`select-toggle${isSelected ? " selected" : ""}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleToggleRecipient(normalizedId);
+                                    }}
+                                    aria-pressed={isSelected}
+                                    aria-label={`${isSelected ? "Deselect" : "Select"} ${nameLabel}`}
+                                  >
+                                    <span className="select-indicator" aria-hidden="true" />
+                                  </button>
+                                </td>
+                                <td className="contact-id-cell">
+                                  {contactIdValue ? (
+                                    <button
+                                      type="button"
+                                      className="contact-id-button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        copyContactIdToClipboard(contactIdValue);
+                                      }}
+                                      aria-label={`Copy contact ID ${contactIdValue}`}
+                                    >
+                                      <span>{contactIdValue}</span>
+                                      <IconCopy />
+                                    </button>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td>{contact.full_name ?? contact.fullName ?? "—"}</td>
+                                <td>{contact.title ?? "—"}</td>
+                                <td>{contact.company ?? "—"}</td>
+                                <td>{contact.location ?? "—"}</td>
+                                <td>
+                                  {profileLink ? (
+                                    <a href={profileLink} target="_blank" rel="noreferrer">
+                                      {contact.profile_url ?? contact.profileUrl}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td>{contact.email ?? "—"}</td>
+                                <td>
+                                  <div className="engagement-cell">
+                                    <span
+                                      className={`status-dot ${engagement.color}`}
+                                      title={
+                                        lastMessagedDisplay === "—"
+                                          ? engagement.label
+                                          : `${engagement.label} (${lastMessagedDisplay})`
+                                      }
+                                      aria-label={
+                                        lastMessagedDisplay === "—"
+                                          ? engagement.label
+                                          : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                      }
+                                    />
+                                    <span className="status-text">{engagement.label}</span>
+                                  </div>
+                                </td>
+                                <td>{lastUpdatedDisplay}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div className="helper-text recipients-helper">
+                    {emailRecipients.length > 0
+                      ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
+                      : "No recipients selected."}
+                  </div>
+                </div>
+
+                <div className="rolodex-form-grid email-inputs">
                   <div className="field">
                     <label className="field-label" htmlFor="subject">
                       Subject
@@ -899,7 +1435,7 @@ export default function Rolodex() {
                     <div className="helper-text" />
                   </div>
 
-                  <div className="field">
+                  <div className="field double">
                     <label className="field-label" htmlFor="message">
                       Message
                     </label>
@@ -942,7 +1478,7 @@ export default function Rolodex() {
             </div>
           )}
 
-          {inlineSummary && !errorMessage && lastAction === "view" && (
+          {inlineSummary && !errorMessage && lastAction === "view" && activePage === "view" && (
             <div className="inline-result" aria-live="polite">
               {inlineSummary}
             </div>
@@ -958,23 +1494,49 @@ export default function Rolodex() {
                 )}
                 <thead>
                   <tr>
-                    <th scope="col">Local ID</th>
+                    <th scope="col">Contact ID</th>
                     <th scope="col">Full Name</th>
                     <th scope="col">Title</th>
                     <th scope="col">Company</th>
                     <th scope="col">Location</th>
                     <th scope="col">Profile URL</th>
                     <th scope="col">Email</th>
+                    <th scope="col">Engagement</th>
                     <th scope="col">Last Updated</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resolvedViewRecords.map((record, index) => {
-                    const key = record.local_id ?? index;
+                    const contactIdValue = resolveContactId(record);
+                    const key = contactIdValue || index;
                     const profileLink = formatProfileHref(record.profile_url ?? record.profileUrl);
+                    const engagement = computeEngagementStatus(record);
+                    const lastUpdatedDisplay = formatTimestamp(
+                      record.last_updated ?? record.updated_at ?? record.updatedAt
+                    );
+                    const lastMessagedDisplay = formatTimestamp(
+                      record.last_contacted ??
+                        record.last_messaged ??
+                        record.lastMessaged ??
+                        record.last_contacted_at
+                    );
                     return (
                       <tr key={key}>
-                        <td>{record.local_id ?? "—"}</td>
+                        <td className="contact-id-cell">
+                          {contactIdValue ? (
+                            <button
+                              type="button"
+                              className="contact-id-button"
+                              onClick={() => copyContactIdToClipboard(contactIdValue)}
+                              aria-label={`Copy contact ID ${contactIdValue}`}
+                            >
+                              <span>{contactIdValue}</span>
+                              <IconCopy />
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td>{record.full_name ?? record.fullName ?? "—"}</td>
                         <td>{record.title ?? "—"}</td>
                         <td>{record.company ?? "—"}</td>
@@ -989,7 +1551,25 @@ export default function Rolodex() {
                           )}
                         </td>
                         <td>{record.email ?? "—"}</td>
-                        <td>{record.last_updated ?? record.updated_at ?? "—"}</td>
+                        <td>
+                          <div className="engagement-cell">
+                            <span
+                              className={`status-dot ${engagement.color}`}
+                              title={
+                                lastMessagedDisplay === "—"
+                                  ? engagement.label
+                                  : `${engagement.label} (${lastMessagedDisplay})`
+                              }
+                              aria-label={
+                                lastMessagedDisplay === "—"
+                                  ? engagement.label
+                                  : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                              }
+                            />
+                            <span className="status-text">{engagement.label}</span>
+                          </div>
+                        </td>
+                        <td>{lastUpdatedDisplay}</td>
                       </tr>
                     );
                   })}
