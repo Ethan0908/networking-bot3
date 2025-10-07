@@ -105,822 +105,596 @@ const SAMPLE_CONTACT_ID = String(
     1
 );
 
-const TEMPLATE_TOKEN_OPTIONS = [
-  { key: "contact.name", label: "contact.name" },
-  { key: "contact.email", label: "contact.email" },
-  { key: "company", label: "company" },
-  { key: "role", label: "role" },
-  { key: "student.name", label: "student.name" },
-  { key: "company.facts", label: "company.facts" },
-  { key: "draft", label: "draft", isSpecial: true },
+const BLOCK_DRAG_TYPE = "application/x-template-block";
+
+const BLOCK_LIBRARY = [
+  { type: "text", label: "Text", description: "Write custom text blocks for your email." },
+  {
+    type: "contactName",
+    label: "Contact Name",
+    token: "contact.name",
+    description: "Insert the recipient name from each selected contact.",
+  },
+  {
+    type: "contactEmail",
+    label: "Contact Email",
+    token: "contact.email",
+    description: "Use the recipient email address for the To field.",
+  },
+  {
+    type: "role",
+    label: "Role",
+    token: "role",
+    contextKey: "role",
+    description: "Reference the role you are interested in.",
+  },
+  {
+    type: "company",
+    label: "Company",
+    token: "company",
+    contextKey: "company",
+    description: "Reference the company you are reaching out to.",
+  },
+  {
+    type: "studentName",
+    label: "Student Name",
+    token: "student.name",
+    contextKey: "studentName",
+    description: "Add your own name for the closing signature.",
+  },
+  {
+    type: "studentSchool",
+    label: "Student School",
+    token: "student.school",
+    contextKey: "studentSchool",
+    description: "Mention the school the student attends.",
+  },
+  { type: "draft", label: "AI Draft", token: "draft", description: "Mark where the AI will write the main message." },
 ];
 
-function generateTemplateContactId() {
-  return `template-contact-${Math.random().toString(36).slice(2, 10)}`;
+const BLOCK_DEFINITIONS = BLOCK_LIBRARY.reduce((accumulator, block) => {
+  accumulator[block.type] = block;
+  return accumulator;
+}, {});
+
+function createBlockId() {
+  return `block-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function createTemplateContact(overrides = {}) {
-  return {
-    id: generateTemplateContactId(),
-    name: "",
-    email: "",
-    title: "",
-    ...overrides,
-  };
+function createBlock(type, overrides = {}) {
+  const definition = BLOCK_DEFINITIONS[type];
+  const base = { id: createBlockId(), type, ...overrides };
+  if (type === "text") {
+    base.text = overrides.text ?? "";
+  }
+  if (!definition) {
+    return base;
+  }
+  return base;
 }
 
-function parseCsvLine(line) {
-  if (!line) {
-    return [];
-  }
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (char === '"') {
-      if (inQuotes && line[index + 1] === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
+function resolveRecipientId(contact) {
+  return String(
+    contact?.__contactId ??
+      contact?.contact_id ??
+      contact?.local_id ??
+      contact?.id ??
+      contact?.contactId ??
+      contact?.localId ??
+      contact?.email ??
+      ""
+  );
 }
 
-function parseContactsCsv(text) {
-  if (!text) {
-    return [];
+function blockToTemplateSegment(block) {
+  if (block.type === "text") {
+    return block.text ?? "";
   }
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) {
-    return [];
+  const definition = BLOCK_DEFINITIONS[block.type];
+  if (definition?.token) {
+    return `{{${definition.token}}}`;
   }
-  const rows = lines.map(parseCsvLine).filter((row) => row.some((value) => value && value.trim()));
-  if (rows.length === 0) {
-    return [];
-  }
-  const headerRow = rows[0].map((value) => value.toLowerCase());
-  const hasHeader = ["name", "email", "title"].some((key) => headerRow.includes(key));
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-  const lookup = hasHeader
-    ? {
-        name: headerRow.indexOf("name"),
-        email: headerRow.indexOf("email"),
-        title: headerRow.indexOf("title"),
-      }
-    : { name: 0, email: 1, title: 2 };
-  return dataRows
-    .map((row) => ({
-      name: row[lookup.name] ?? "",
-      email: row[lookup.email] ?? "",
-      title: row[lookup.title] ?? "",
-    }))
-    .filter((row) => row.name || row.email || row.title);
+  return "";
 }
 
-function hasTemplateContactData(contact) {
-  if (!contact) {
-    return false;
-  }
-  return Boolean(contact.name?.trim() || contact.email?.trim() || contact.title?.trim());
-}
-
-function resolveTemplateToken(token, contact, context = {}) {
-  switch (token) {
-    case "contact.name":
-      return contact?.name?.trim();
-    case "contact.email":
-      return contact?.email?.trim();
-    case "contact.title":
-      return contact?.title?.trim();
-    case "company":
-      return context.company?.trim();
-    case "role":
-      return context.role?.trim();
-    case "student.name":
-      return context.studentName?.trim();
-    case "company.facts":
-      return Array.isArray(context.companyFacts) && context.companyFacts.length > 0
-        ? `• ${context.companyFacts.join("\n• ")}`
-        : undefined;
-    default:
-      return undefined;
-  }
-}
-
-function renderTemplateString(templateString, contact, context = {}) {
-  if (!templateString) {
-    return "";
-  }
-  return templateString.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, token) => {
-    if (token === "draft") {
-      return context.draftPlaceholder ?? "[AI will write this]";
-    }
-    const value = resolveTemplateToken(token, contact, context);
-    if (value == null || value === "") {
-      return `[missing ${token}]`;
-    }
-    return value;
+function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailContacts = [] }) {
+  const [blocks, setBlocks] = useState(() => ({
+    to: [createBlock("contactEmail")],
+    subject: [
+      createBlock("text", { text: "Quick intro about " }),
+      createBlock("role"),
+      createBlock("text", { text: " at " }),
+      createBlock("company"),
+    ],
+    body: [
+      createBlock("text", { text: "Dear " }),
+      createBlock("contactName"),
+      createBlock("text", { text: ",\n\nI’m interested in " }),
+      createBlock("role"),
+      createBlock("text", { text: " at " }),
+      createBlock("company"),
+      createBlock("text", { text: ". \n\n" }),
+      createBlock("draft"),
+      createBlock("text", { text: "\n\nBest,\n" }),
+      createBlock("studentName"),
+    ],
+  }));
+  const [contextValues, setContextValues] = useState({
+    role: "Data Analyst",
+    company: "Palantir",
+    studentName: "Denny",
+    studentSchool: "UBC",
   });
-}
-
-function normalizeDatasetContacts(contacts) {
-  return contacts
-    .map((contact) => ({
-      name: contact.name?.trim() ?? "",
-      email: contact.email?.trim() ?? "",
-      title: contact.title?.trim() ?? "",
-    }))
-    .filter((contact) => contact.name || contact.email || contact.title);
-}
-
-function extractMessageList(payload) {
-  if (!payload) {
-    return [];
-  }
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (Array.isArray(payload?.results)) {
-    return payload.results;
-  }
-  if (Array.isArray(payload?.items)) {
-    return payload.items;
-  }
-  if (Array.isArray(payload?.data)) {
-    return payload.data;
-  }
-  if (Array.isArray(payload?.messages)) {
-    return payload.messages;
-  }
-  if (payload?.data) {
-    return extractMessageList(payload.data);
-  }
-  if (typeof payload === "object") {
-    const candidate = {};
-    if (payload.to) candidate.to = payload.to;
-    if (payload.subject) candidate.subject = payload.subject;
-    if (payload.body) candidate.body = payload.body;
-    if (Object.keys(candidate).length > 0) {
-      return [candidate];
-    }
-  }
-  return [];
-}
-
-function EmailTemplateWorkspace({ pushToast }) {
-  const [template, setTemplate] = useState({ to: "", subject: "", body: "" });
   const [activeField, setActiveField] = useState("body");
-  const fieldRefs = useRef({ to: null, subject: null, body: null });
-  const selectionRef = useRef({
-    to: { start: 0, end: 0 },
-    subject: { start: 0, end: 0 },
-    body: { start: 0, end: 0 },
-  });
-  const [contacts, setContacts] = useState(() => [createTemplateContact()]);
-  const fileInputRef = useRef(null);
-  const [role, setRole] = useState("");
-  const [company, setCompany] = useState("");
-  const [studentName, setStudentName] = useState("");
-  const [companyFacts, setCompanyFacts] = useState([]);
-  const [selectedPreviewContactId, setSelectedPreviewContactId] = useState("");
-  const [dryRunResults, setDryRunResults] = useState([]);
-  const [dryRunLoading, setDryRunLoading] = useState(false);
-  const [dryRunError, setDryRunError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendMessage, setSendMessage] = useState("");
+  const [sendError, setSendError] = useState("");
+  const [dragState, setDragState] = useState(null);
 
-  const updateSelectionRef = useCallback((field, target) => {
-    if (!target) {
-      return;
+  const selectedContacts = useMemo(() => {
+    if (!Array.isArray(emailContacts) || emailContacts.length === 0) {
+      return [];
     }
-    selectionRef.current[field] = {
-      start: target.selectionStart ?? 0,
-      end: target.selectionEnd ?? target.selectionStart ?? 0,
-    };
+    const selected = new Set((selectedRecipientIds ?? []).map((value) => String(value)));
+    if (selected.size === 0) {
+      return [];
+    }
+    return emailContacts
+      .map((contact) => ({ id: resolveRecipientId(contact), contact }))
+      .filter(({ id }) => id && selected.has(id))
+      .map(({ contact }) => ({
+        name:
+          contact?.full_name ??
+          contact?.fullName ??
+          contact?.name ??
+          contact?.contact_name ??
+          contact?.contactName ??
+          "",
+        email: contact?.email ?? "",
+        title: contact?.title ?? contact?.job_title ?? contact?.jobTitle ?? "",
+        company: contact?.company ?? contact?.organization ?? "",
+      }))
+      .filter((contact) => contact.email);
+  }, [emailContacts, selectedRecipientIds]);
+
+  const hasDraftBlock = useMemo(() => blocks.body.some((block) => block.type === "draft"), [blocks.body]);
+
+  const handlePaletteDragStart = useCallback((event, type) => {
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData(BLOCK_DRAG_TYPE, JSON.stringify({ source: "palette", type }));
+    setDragState({ source: "palette", type });
   }, []);
 
-  const handleTemplateChange = useCallback((field, event) => {
-    const { value } = event.target;
-    setTemplate((prev) => ({ ...prev, [field]: value }));
-    updateSelectionRef(field, event.target);
-  }, [updateSelectionRef]);
+  const handleBlockDragStart = useCallback((event, field, blockId) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(BLOCK_DRAG_TYPE, JSON.stringify({ source: "canvas", field, blockId }));
+    setDragState({ source: "canvas", field, blockId });
+  }, []);
 
-  const handleFieldFocus = useCallback((field, event) => {
-    setActiveField(field);
-    updateSelectionRef(field, event.target);
-  }, [updateSelectionRef]);
+  const handleDragEnd = useCallback(() => {
+    setDragState(null);
+  }, []);
 
-  const handleFieldSelect = useCallback((field, event) => {
-    updateSelectionRef(field, event.target);
-  }, [updateSelectionRef]);
-
-  const insertVariableToken = useCallback(
-    (token) => {
-      const field = activeField || "body";
-      const ref = fieldRefs.current[field];
-      const tokenString = `{{${token}}}`;
-      const selection = selectionRef.current[field] || { start: 0, end: 0 };
-      const currentValue = template[field] ?? "";
-      const start = Math.max(0, Math.min(selection.start ?? currentValue.length, currentValue.length));
-      const end = Math.max(start, Math.min(selection.end ?? start, currentValue.length));
-      const nextValue = `${currentValue.slice(0, start)}${tokenString}${currentValue.slice(end)}`;
-      setTemplate((prev) => ({ ...prev, [field]: nextValue }));
-      const nextPosition = start + tokenString.length;
-      selectionRef.current[field] = { start: nextPosition, end: nextPosition };
-      if (typeof window !== "undefined") {
-        const focusTarget = ref;
-        const schedule = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
-        schedule(() => {
-          if (focusTarget) {
-            focusTarget.focus();
-            focusTarget.setSelectionRange(nextPosition, nextPosition);
+  const handleDrop = useCallback(
+    (field, index, event) => {
+      event.preventDefault();
+      const raw = event.dataTransfer.getData(BLOCK_DRAG_TYPE);
+      if (!raw) {
+        return;
+      }
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      setBlocks((prev) => {
+        const next = { ...prev };
+        if (payload.source === "palette") {
+          const newBlock = createBlock(payload.type);
+          const target = [...next[field]];
+          const insertionIndex = Math.max(0, Math.min(index, target.length));
+          target.splice(insertionIndex, 0, newBlock);
+          next[field] = target;
+          return next;
+        }
+        if (payload.source === "canvas" && payload.blockId) {
+          const sourceField = payload.field;
+          const sourceBlocks = [...next[sourceField]];
+          const currentIndex = sourceBlocks.findIndex((block) => block.id === payload.blockId);
+          if (currentIndex === -1) {
+            return prev;
           }
-        });
-      }
+          const [movingBlock] = sourceBlocks.splice(currentIndex, 1);
+          next[sourceField] = sourceBlocks;
+          const target = [...next[field]];
+          let insertionIndex = Math.max(0, Math.min(index, target.length));
+          if (sourceField === field && currentIndex < insertionIndex) {
+            insertionIndex -= 1;
+          }
+          target.splice(insertionIndex, 0, movingBlock);
+          next[field] = target;
+          return next;
+        }
+        return prev;
+      });
+      setActiveField(field);
+      setDragState(null);
     },
-    [activeField, template]
+    []
   );
 
-  const handleCopyVariable = useCallback(async (token) => {
-    const value = `{{${token}}}`;
-    try {
-      if (typeof navigator === "undefined" || !navigator.clipboard) {
-        throw new Error("Clipboard not available");
-      }
-      await navigator.clipboard.writeText(value);
-      pushToast?.("success", `Copied ${value}`);
-    } catch (error) {
-      console.error("Failed to copy", error);
-      pushToast?.("error", "Unable to copy variable.");
-    }
-  }, [pushToast]);
+  const handleDragOver = useCallback(
+    (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = dragState?.source === "palette" ? "copy" : "move";
+    },
+    [dragState]
+  );
 
-  const handleContactChange = useCallback((id, field, value) => {
-    setContacts((prev) =>
-      prev.map((contact) => (contact.id === id ? { ...contact, [field]: value } : contact))
-    );
+  const handlePaletteClick = useCallback(
+    (type) => {
+      setBlocks((prev) => {
+        const next = { ...prev };
+        const target = [...next[activeField]];
+        target.push(createBlock(type));
+        next[activeField] = target;
+        return next;
+      });
+    },
+    [activeField]
+  );
+
+  const handleTextChange = useCallback((field, blockId, value) => {
+    setBlocks((prev) => {
+      const next = { ...prev };
+      next[field] = next[field].map((block) => (block.id === blockId ? { ...block, text: value } : block));
+      return next;
+    });
   }, []);
 
-  const handleAddContactRow = useCallback(() => {
-    setContacts((prev) => [...prev, createTemplateContact()]);
+  const handleRemoveBlock = useCallback((field, blockId) => {
+    setBlocks((prev) => {
+      const next = { ...prev };
+      next[field] = next[field].filter((block) => block.id !== blockId);
+      return next;
+    });
   }, []);
 
-  const handleClearContacts = useCallback(() => {
-    setContacts([createTemplateContact()]);
-    setSelectedPreviewContactId("");
+  const handleContextChange = useCallback((key, value) => {
+    setContextValues((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleImportCsv = useCallback(async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    try {
-      const text = await file.text();
-      const parsed = parseContactsCsv(text);
-      if (parsed.length === 0) {
-        throw new Error("No contacts found in CSV.");
-      }
-      setContacts(parsed.map((row) => createTemplateContact(row)));
-      setSelectedPreviewContactId("");
-      pushToast?.("success", `Imported ${parsed.length} contact${parsed.length === 1 ? "" : "s"}.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to import CSV.";
-      pushToast?.("error", message);
-    } finally {
-      event.target.value = "";
-    }
-  }, [pushToast]);
+  const compileField = useCallback((fieldBlocks) => fieldBlocks.map(blockToTemplateSegment).join(""), []);
 
-  const handleAddCompanyFact = useCallback(() => {
-    setCompanyFacts((prev) => [...prev, ""]);
-  }, []);
-
-  const handleCompanyFactChange = useCallback((index, value) => {
-    setCompanyFacts((prev) => prev.map((fact, i) => (i === index ? value : fact)));
-  }, []);
-
-  const handleRemoveCompanyFact = useCallback((index) => {
-    setCompanyFacts((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const previewContacts = useMemo(() => contacts.filter(hasTemplateContactData), [contacts]);
-
-  useEffect(() => {
-    if (previewContacts.length === 0) {
-      if (selectedPreviewContactId) {
-        setSelectedPreviewContactId("");
-      }
-      return;
-    }
-    const exists = previewContacts.some((contact) => contact.id === selectedPreviewContactId);
-    if (!exists) {
-      setSelectedPreviewContactId(previewContacts[0].id);
-    }
-  }, [previewContacts, selectedPreviewContactId]);
-
-  const selectedPreviewContact = useMemo(() => {
-    if (!selectedPreviewContactId) {
-      return null;
-    }
-    return previewContacts.find((contact) => contact.id === selectedPreviewContactId) ?? null;
-  }, [previewContacts, selectedPreviewContactId]);
-
-  const bodyHasDraft = useMemo(() => /\{\{\s*draft\s*\}\}/i.test(template.body), [template.body]);
-
-  const draftPlaceholder = "[AI will write this]";
-
-  const previewContext = useMemo(
+  const templateStrings = useMemo(
     () => ({
-      company,
-      role,
-      studentName,
-      companyFacts: companyFacts.map((fact) => fact.trim()).filter(Boolean),
-      draftPlaceholder,
+      to: compileField(blocks.to),
+      subject: compileField(blocks.subject),
+      body: compileField(blocks.body),
     }),
-    [company, role, studentName, companyFacts]
+    [blocks, compileField]
   );
 
-  const previewValues = useMemo(() => {
-    if (!selectedPreviewContact) {
-      return null;
+  const dataset = useMemo(() => {
+    const contacts = selectedContacts.map((contact) => {
+      const trimmedName = contact.name?.trim() ?? "";
+      const trimmedEmail = contact.email?.trim() ?? "";
+      const trimmedTitle = contact.title?.trim() ?? "";
+      const trimmedCompany = contact.company?.trim() ?? "";
+      return {
+        ...(trimmedName ? { name: trimmedName } : {}),
+        ...(trimmedEmail ? { email: trimmedEmail } : {}),
+        ...(trimmedTitle ? { title: trimmedTitle } : {}),
+        ...(trimmedCompany ? { company: trimmedCompany } : {}),
+      };
+    });
+    const payload = { contacts };
+    const trimmedRole = contextValues.role.trim();
+    const trimmedCompany = contextValues.company.trim();
+    const trimmedStudentName = contextValues.studentName.trim();
+    const trimmedStudentSchool = contextValues.studentSchool.trim();
+    if (trimmedRole) {
+      payload.role = trimmedRole;
     }
-    return {
-      to: renderTemplateString(template.to, selectedPreviewContact, previewContext),
-      subject: renderTemplateString(template.subject, selectedPreviewContact, previewContext),
-      body: renderTemplateString(template.body, selectedPreviewContact, previewContext),
-    };
-  }, [previewContext, selectedPreviewContact, template.body, template.subject, template.to]);
+    if (trimmedCompany) {
+      payload.company = trimmedCompany;
+    }
+    if (trimmedStudentName || trimmedStudentSchool) {
+      payload.student = {};
+      if (trimmedStudentName) {
+        payload.student.name = trimmedStudentName;
+      }
+      if (trimmedStudentSchool) {
+        payload.student.school = trimmedStudentSchool;
+      }
+    }
+    return payload;
+  }, [contextValues, selectedContacts]);
 
-  const handleDryRun = useCallback(async () => {
-    setDryRunError("");
-    const datasetContacts = normalizeDatasetContacts(contacts);
-    if (datasetContacts.length === 0) {
-      const message = "Add at least one contact before running a dry run.";
-      setDryRunError(message);
+  const handleSend = useCallback(async () => {
+    setSendError("");
+    setSendMessage("");
+    if (selectedContacts.length === 0) {
+      const message = "Select at least one recipient from the table above before sending.";
+      setSendError(message);
       pushToast?.("error", message);
       return;
     }
-    const trimmedRole = role.trim();
-    const trimmedCompany = company.trim();
-    const trimmedStudent = studentName.trim();
-    const trimmedFacts = companyFacts.map((fact) => fact.trim()).filter(Boolean);
+    if (!hasDraftBlock) {
+      const message = "Add the AI Draft block to the body so the assistant knows where to write.";
+      setSendError(message);
+      pushToast?.("error", message);
+      return;
+    }
+    const trimmedTo = templateStrings.to.trim();
+    if (!trimmedTo) {
+      const message = "Add at least one block to the To field.";
+      setSendError(message);
+      pushToast?.("error", message);
+      return;
+    }
     const payload = {
-      template: { ...template },
-      dataset: {
-        contacts: datasetContacts,
-        ...(trimmedRole ? { role: trimmedRole } : {}),
-        ...(trimmedCompany ? { company: trimmedCompany } : {}),
-        ...(trimmedFacts.length > 0 ? { companyFacts: trimmedFacts } : {}),
-        ...(trimmedStudent ? { student: { name: trimmedStudent } } : {}),
+      template: {
+        to: trimmedTo,
+        subject: templateStrings.subject.trim(),
+        body: templateStrings.body,
+        repeat: { over: "contacts", as: "contact" },
       },
-      options: { dryRun: true },
+      dataset,
+      options: { batchSize: 25 },
     };
-    setDryRunLoading(true);
+    setSending(true);
     try {
       const response = await fetch("/api/n8n", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = await response.json();
+      const result = await response.json();
       if (!response.ok) {
-        const detail = json?.detail || json?.error || json?.data?.error || json?.data?.message;
-        throw new Error(detail || "Dry run failed.");
+        const detail =
+          result?.detail || result?.error || result?.data?.error || result?.data?.message || "Failed to send.";
+        throw new Error(detail);
       }
-      const list = extractMessageList(json?.data);
-      if (list.length === 0) {
-        setDryRunResults([]);
-        pushToast?.("info", "Dry run completed with no messages returned.");
-        return;
-      }
-      const nextResults = list.map((item, index) => {
-        const body = item.body ?? "";
-        return {
-          id: `dry-run-${Date.now()}-${index}`,
-          to: item.to ?? "",
-          subject: item.subject ?? "",
-          body,
-          originalBody: body,
-          excluded: false,
-          isEditing: false,
-        };
-      });
-      setDryRunResults(nextResults);
-      pushToast?.("success", "Dry run generated preview messages.");
+      const message = `Sent template for ${selectedContacts.length} recipient${
+        selectedContacts.length === 1 ? "" : "s"
+      } to n8n.`;
+      setSendMessage(message);
+      pushToast?.("success", message);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Dry run failed.";
-      setDryRunError(message);
+      const message = error instanceof Error ? error.message : "Failed to send template.";
+      setSendError(message);
       pushToast?.("error", message);
     } finally {
-      setDryRunLoading(false);
+      setSending(false);
     }
-  }, [company, companyFacts, contacts, pushToast, role, studentName, template]);
+  }, [dataset, hasDraftBlock, pushToast, selectedContacts, templateStrings.body, templateStrings.subject, templateStrings.to]);
 
-  const handleToggleExclude = useCallback((id) => {
-    setDryRunResults((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, excluded: !item.excluded } : item))
+  const renderBlock = (field, block) => {
+    const definition = BLOCK_DEFINITIONS[block.type] ?? { label: block.type };
+    const isText = block.type === "text";
+    const contextKey = definition.contextKey;
+    const sharedProps = {
+      draggable: true,
+      onDragStart: (event) => handleBlockDragStart(event, field, block.id),
+      onDragEnd: handleDragEnd,
+      className: `block-card block-card--${block.type}`,
+    };
+    return (
+      <div key={block.id} {...sharedProps}>
+        <div className="block-handle" aria-hidden="true">
+          ⋮
+        </div>
+        <div className="block-main">
+          <span className="block-label">{definition.label}</span>
+          {isText ? (
+            field === "body" ? (
+              <textarea
+                className="block-input"
+                rows={definition.minRows ?? 3}
+                value={block.text}
+                onFocus={() => setActiveField(field)}
+                onChange={(event) => handleTextChange(field, block.id, event.target.value)}
+              />
+            ) : (
+              <input
+                className="block-input"
+                value={block.text}
+                onFocus={() => setActiveField(field)}
+                onChange={(event) => handleTextChange(field, block.id, event.target.value)}
+              />
+            )
+          ) : null}
+          {contextKey && (
+            <div className="block-context">
+              <label className="block-context-label" htmlFor={`${block.id}-${contextKey}`}>
+                {definition.label} value
+              </label>
+              <input
+                id={`${block.id}-${contextKey}`}
+                className="block-context-input"
+                value={contextValues[contextKey] ?? ""}
+                onFocus={() => setActiveField(field)}
+                onChange={(event) => handleContextChange(contextKey, event.target.value)}
+                placeholder={
+                  contextKey === "studentName"
+                    ? "e.g. Denny"
+                    : contextKey === "studentSchool"
+                    ? "e.g. UBC"
+                    : contextKey === "role"
+                    ? "e.g. Data Analyst"
+                    : contextKey === "company"
+                    ? "e.g. Palantir"
+                    : ""
+                }
+              />
+            </div>
+          )}
+          {definition.description && <p className="block-description">{definition.description}</p>}
+        </div>
+        <button
+          type="button"
+          className="block-remove"
+          onClick={() => handleRemoveBlock(field, block.id)}
+          aria-label={`Remove ${definition.label} block`}
+        >
+          ×
+        </button>
+      </div>
     );
-  }, []);
+  };
 
-  const handleToggleEdit = useCallback((id) => {
-    setDryRunResults((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, isEditing: !item.isEditing } : item
-      )
+  const renderDropTargets = (fieldBlocks, field) => {
+    if (fieldBlocks.length === 0) {
+      return [
+        <div
+          key={`${field}-empty`}
+          className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
+          onDragOver={handleDragOver}
+          onDrop={(event) => handleDrop(field, 0, event)}
+        />,
+      ];
+    }
+    const nodes = [];
+    fieldBlocks.forEach((block, index) => {
+      nodes.push(
+        <div
+          key={`${block.id}-before`}
+          className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
+          onDragOver={handleDragOver}
+          onDrop={(event) => handleDrop(field, index, event)}
+        />
+      );
+      nodes.push(renderBlock(field, block));
+    });
+    nodes.push(
+      <div
+        key={`${field}-after`}
+        className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
+        onDragOver={handleDragOver}
+        onDrop={(event) => handleDrop(field, fieldBlocks.length, event)}
+      />
     );
-  }, []);
-
-  const handleDryRunBodyChange = useCallback((id, value) => {
-    setDryRunResults((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, body: value } : item))
-    );
-  }, []);
-
-  const handleResetDryRunBody = useCallback((id) => {
-    setDryRunResults((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, body: item.originalBody ?? "", isEditing: false } : item
-      )
-    );
-  }, []);
-
-  const excludedCount = useMemo(
-    () => dryRunResults.filter((item) => item.excluded).length,
-    [dryRunResults]
-  );
+    return nodes;
+  };
 
   return (
     <section className="template-workspace" aria-labelledby="template-workspace-heading">
-      <h2 id="template-workspace-heading">Template Builder</h2>
+      <h2 id="template-workspace-heading">Template Blocks</h2>
       <p className="template-intro">
-        Define your outreach template, manage contacts, and preview how each message will look before
-        sending it to AI.
+        Drag blocks into the email fields to shape your outreach. Each block sends its token to n8n while you edit the
+        friendly labels here.
       </p>
 
       <div className="template-card template-card--builder">
-        <div className="template-builder">
-          <h3>Template Inputs</h3>
-          <div className="template-grid">
-            <div className="field">
-              <label className="field-label" htmlFor="template-to">
-                To
-              </label>
-              <input
-                id="template-to"
-                ref={(element) => {
-                  fieldRefs.current.to = element;
-                }}
-                className="text-input"
-                value={template.to}
-                onChange={(event) => handleTemplateChange("to", event)}
-                onFocus={(event) => handleFieldFocus("to", event)}
-                onSelect={(event) => handleFieldSelect("to", event)}
-                placeholder="{{contact.email}}"
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="template-subject">
-                Subject
-              </label>
-              <input
-                id="template-subject"
-                ref={(element) => {
-                  fieldRefs.current.subject = element;
-                }}
-                className="text-input"
-                value={template.subject}
-                onChange={(event) => handleTemplateChange("subject", event)}
-                onFocus={(event) => handleFieldFocus("subject", event)}
-                onSelect={(event) => handleFieldSelect("subject", event)}
-                placeholder="Excited to connect with {{contact.name}}"
-              />
-            </div>
-
-            <div className="field double">
-              <label className="field-label" htmlFor="template-body">
-                Body
-              </label>
-              <textarea
-                id="template-body"
-                ref={(element) => {
-                  fieldRefs.current.body = element;
-                }}
-                className="text-area"
-                value={template.body}
-                onChange={(event) => handleTemplateChange("body", event)}
-                onFocus={(event) => handleFieldFocus("body", event)}
-                onSelect={(event) => handleFieldSelect("body", event)}
-                rows={6}
-                placeholder={`Hi {{contact.name}},\n\n{{draft}}\n\nThanks!`}
-              />
-              {!bodyHasDraft && (
-                <div className="body-warning" role="note">
-                  Add {"{{draft}}"} somewhere in the body so the AI knows where to write.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="variable-palette" aria-label="Template variables">
-            <span className="palette-label">Variables</span>
-            <div className="palette-chips">
-              {TEMPLATE_TOKEN_OPTIONS.map((token) => (
-                <div key={token.key} className={`variable-chip${token.isSpecial ? " special" : ""}`}>
-                  <button type="button" onClick={() => insertVariableToken(token.key)}>
-                    {"{{"}
-                    {token.label}
-                    {"}}"}
-                  </button>
-                  <button
-                    type="button"
-                    className="copy-variable"
-                    aria-label={`Copy {{${token.key}}}`}
-                    onClick={() => handleCopyVariable(token.key)}
-                  >
-                    <IconCopy />
-                  </button>
-                </div>
+        <div className="block-workspace">
+          <aside className="block-palette" aria-label="Block library">
+            <h3>Block Library</h3>
+            <p className="helper-text">Drag blocks into a field or click to add them to the active field.</p>
+            <div className="block-palette-list">
+              {BLOCK_LIBRARY.map((block) => (
+                <button
+                  key={block.type}
+                  type="button"
+                  className="block-palette-item"
+                  draggable
+                  onDragStart={(event) => handlePaletteDragStart(event, block.type)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => handlePaletteClick(block.type)}
+                >
+                  <span className="block-palette-label">{block.label}</span>
+                  <span className="block-palette-description">{block.description}</span>
+                </button>
               ))}
             </div>
+          </aside>
+
+          <div className="block-fields">
+            {["to", "subject", "body"].map((field) => (
+              <div
+                key={field}
+                className={`block-field${activeField === field ? " block-field--active" : ""}`}
+                onClick={() => setActiveField(field)}
+              >
+                <div className="block-field-header">
+                  <h3 className="block-field-title">{field === "to" ? "To" : field === "subject" ? "Subject" : "Body"}</h3>
+                  <span className="block-field-hint">
+                    {field === "body"
+                      ? "Combine text, context, and the AI Draft block."
+                      : "Drag here to build this part."}
+                  </span>
+                </div>
+                <div className="block-canvas" onDragOver={handleDragOver}>
+                  {renderDropTargets(blocks[field], field)}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-
-        <div className="template-context">
-          <h3>Context</h3>
-          <div className="template-grid">
-            <div className="field">
-              <label className="field-label" htmlFor="template-role">
-                Role
-              </label>
-              <input
-                id="template-role"
-                className="text-input"
-                value={role}
-                onChange={(event) => setRole(event.target.value)}
-                placeholder="Partnerships Lead"
-              />
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor="template-company">
-                Company
-              </label>
-              <input
-                id="template-company"
-                className="text-input"
-                value={company}
-                onChange={(event) => setCompany(event.target.value)}
-                placeholder="Acme Corp"
-              />
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor="template-student">
-                Student Name
-              </label>
-              <input
-                id="template-student"
-                className="text-input"
-                value={studentName}
-                onChange={(event) => setStudentName(event.target.value)}
-                placeholder="Taylor"
-              />
-            </div>
+        {!hasDraftBlock && (
+          <div className="body-warning" role="alert">
+            Add the AI Draft block to the body so the assistant knows where to write.
           </div>
-          <div className="company-facts">
-            <div className="company-facts-header">
-              <span>Company facts</span>
-              <button type="button" className="button tertiary" onClick={handleAddCompanyFact}>
-                Add fact
-              </button>
-            </div>
-            {companyFacts.length === 0 ? (
-              <p className="helper-text">Add bullet points for the AI to reference.</p>
-            ) : (
-              <ul className="company-facts-list">
-                {companyFacts.map((fact, index) => (
-                  <li key={`fact-${index}`} className="company-fact-item">
-                    <textarea
-                      className="text-area"
-                      rows={2}
-                      value={fact}
-                      onChange={(event) => handleCompanyFactChange(index, event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="button tertiary"
-                      onClick={() => handleRemoveCompanyFact(index)}
-                      aria-label="Remove fact"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="template-card template-card--contacts">
-        <div className="contacts-header">
-          <h3>Contacts</h3>
-          <div className="contacts-actions">
-            <button type="button" className="button tertiary" onClick={handleAddContactRow}>
-              Add row
-            </button>
-            <button type="button" className="button tertiary" onClick={() => fileInputRef.current?.click()}>
-              Import CSV
-            </button>
-            <button type="button" className="button tertiary" onClick={handleClearContacts}>
-              Clear
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="sr-only"
-              onChange={handleImportCsv}
-            />
-          </div>
-        </div>
-
-        <div className="contacts-table-wrapper">
-          <table className="contacts-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Email</th>
-                <th scope="col">Title</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contacts.map((contact) => (
-                <tr key={contact.id}>
-                  <td>
-                    <input
-                      type="text"
-                      className="text-input"
-                      value={contact.name}
-                      onChange={(event) => handleContactChange(contact.id, "name", event.target.value)}
-                      placeholder="Jordan Smith"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="email"
-                      className="text-input"
-                      value={contact.email}
-                      onChange={(event) => handleContactChange(contact.id, "email", event.target.value)}
-                      placeholder="jordan@example.com"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="text"
-                      className="text-input"
-                      value={contact.title}
-                      onChange={(event) => handleContactChange(contact.id, "title", event.target.value)}
-                      placeholder="Head of Community"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="template-card template-card--preview">
-        <div className="preview-header">
-          <h3>Preview</h3>
-          <div className="preview-select">
-            <label htmlFor="preview-contact" className="field-label">
-              Contact
-            </label>
-            <select
-              id="preview-contact"
-              className="text-input"
-              value={selectedPreviewContactId}
-              onChange={(event) => setSelectedPreviewContactId(event.target.value)}
-              disabled={previewContacts.length === 0}
-            >
-              {previewContacts.length === 0 ? (
-                <option value="">Add contact details to preview</option>
-              ) : (
-                previewContacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.name || contact.email || "Contact"}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-        </div>
-
-        {previewValues ? (
-          <div className="preview-card" role="region" aria-live="polite">
-            <div className="preview-line"><strong>To:</strong> <span>{previewValues.to || "—"}</span></div>
-            <div className="preview-line"><strong>Subject:</strong> <span>{previewValues.subject || "—"}</span></div>
-            <div className="preview-body">
-              <strong>Body:</strong>
-              <pre>{previewValues.body || "—"}</pre>
-            </div>
-          </div>
-        ) : (
-          <p className="helper-text">
-            Choose a contact to see the rendered template. {"{{draft}}"} appears as {draftPlaceholder}.
-          </p>
         )}
+      </div>
 
-        <div className="dry-run-actions">
-          <button type="button" className="button secondary" onClick={handleDryRun} disabled={dryRunLoading}>
-            {dryRunLoading ? <IconLoader /> : null}
-            {dryRunLoading ? "Generating…" : "Generate with AI (dry run)"}
+      <div className="template-card template-card--summary">
+        <div className="summary-section">
+          <h3>Recipients</h3>
+          {selectedContacts.length === 0 ? (
+            <p className="helper-text">Use the selection table above to choose who will receive this email.</p>
+          ) : (
+            <ul className="recipient-list">
+              {selectedContacts.map((contact, index) => (
+                <li key={`${contact.email}-${index}`}>
+                  <strong>{contact.name || contact.email}</strong>
+                  <span>{contact.email}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="summary-section">
+          <h3>Context</h3>
+          <div className="context-bubbles">
+            <div className="context-bubble">
+              <span className="context-label">Role</span>
+              <span className="context-value">{contextValues.role || "—"}</span>
+            </div>
+            <div className="context-bubble">
+              <span className="context-label">Company</span>
+              <span className="context-value">{contextValues.company || "—"}</span>
+            </div>
+            <div className="context-bubble">
+              <span className="context-label">Student Name</span>
+              <span className="context-value">{contextValues.studentName || "—"}</span>
+            </div>
+            <div className="context-bubble">
+              <span className="context-label">Student School</span>
+              <span className="context-value">{contextValues.studentSchool || "—"}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="send-actions">
+          <button type="button" className="button" onClick={handleSend} disabled={sending}>
+            {sending ? <IconLoader /> : null}
+            {sending ? "Sending…" : "Send to n8n"}
           </button>
         </div>
 
-        {dryRunError && <div className="inline-result" role="alert">{dryRunError}</div>}
-
-        <div className="dry-run-results" aria-live="polite">
-          {dryRunResults.length === 0 ? (
-            <p className="helper-text">Run a dry run to see AI-generated drafts here.</p>
-          ) : (
-            <>
-              <div className="dry-run-summary">
-                <span>{dryRunResults.length} message{dryRunResults.length === 1 ? "" : "s"} ready.</span>
-                {excludedCount > 0 && <span>{excludedCount} excluded.</span>}
-              </div>
-              <div className="dry-run-list">
-                {dryRunResults.map((item) => (
-                  <article key={item.id} className={`dry-run-item${item.excluded ? " excluded" : ""}`}>
-                    <header className="dry-run-item-header">
-                      <div className="dry-run-recipient">
-                        <div><strong>To:</strong> {item.to || "—"}</div>
-                        <div><strong>Subject:</strong> {item.subject || "—"}</div>
-                      </div>
-                      <div className="dry-run-item-actions">
-                        <label className="exclude-toggle">
-                          <input
-                            type="checkbox"
-                            checked={item.excluded}
-                            onChange={() => handleToggleExclude(item.id)}
-                          />
-                          <span>Exclude</span>
-                        </label>
-                        <button type="button" className="button tertiary" onClick={() => handleToggleEdit(item.id)}>
-                          {item.isEditing ? "Close editor" : "Edit this one"}
-                        </button>
-                        <button
-                          type="button"
-                          className="button tertiary"
-                          onClick={() => handleResetDryRunBody(item.id)}
-                          disabled={item.body === item.originalBody}
-                        >
-                          Reset
-                        </button>
-                      </div>
-                    </header>
-                    {item.isEditing ? (
-                      <textarea
-                        className="text-area"
-                        rows={6}
-                        value={item.body}
-                        onChange={(event) => handleDryRunBodyChange(item.id, event.target.value)}
-                      />
-                    ) : (
-                      <pre className="dry-run-body">{item.body || "—"}</pre>
-                    )}
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="template-card template-card--send send-placeholder" aria-live="polite">
-        <h3>Send (coming soon)</h3>
-        <p className="helper-text">
-          Connect your send flow to enable delivery. Once ready, this section will send approved drafts to
-          Gmail and report progress for each recipient.
-        </p>
+        {sendError && (
+          <div className="inline-result" role="alert">
+            {sendError}
+          </div>
+        )}
+        {sendMessage && <div className="inline-result success">{sendMessage}</div>}
       </div>
     </section>
   );
 }
-
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -2405,7 +2179,13 @@ export default function Rolodex() {
           <div className="empty-footer">{emptyMessageMap[activePage]}</div>
         )}
 
-        {activePage === "email" && <EmailTemplateWorkspace pushToast={pushToast} />}
+        {activePage === "email" && (
+          <EmailTemplateWorkspace
+            pushToast={pushToast}
+            selectedRecipientIds={emailRecipients}
+            emailContacts={emailContacts}
+          />
+        )}
       </section>
     </div>
   );
