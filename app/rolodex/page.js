@@ -476,82 +476,120 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     const definition = BLOCK_DEFINITIONS[block.type] ?? { label: block.type };
     const isText = block.type === "text";
     const contextKey = definition.contextKey;
-    const sharedProps = {
-      draggable: true,
-      onDragStart: (event) => handleBlockDragStart(event, field, block.id),
-      onDragEnd: handleDragEnd,
-      className: `block-card block-card--${block.type}`,
+    const contextValue = contextKey ? contextValues[contextKey] ?? "" : "";
+    const tokenDisplay =
+      block.type === "draft"
+        ? "[AI will write this]"
+        : contextKey && contextValue
+        ? contextValue
+        : definition.label;
+    const tokenMeta = contextKey
+      ? contextValue
+        ? definition.label
+        : "Set value"
+      : null;
+    const tokenTitle = definition.token ? `{{${definition.token}}}` : definition.label;
+
+    const handleTokenActivate = (event) => {
+      if (!contextKey) {
+        return;
+      }
+      event.stopPropagation();
+      setActiveField(field);
+      if (typeof window === "undefined") {
+        return;
+      }
+      const next = window.prompt(`Set ${definition.label}`, contextValue);
+      if (next !== null) {
+        handleContextChange(contextKey, next);
+      }
     };
+
+    const contextClassName = contextKey
+      ? contextValue
+        ? " block-node--context"
+        : " block-node--context block-node--context-empty"
+      : "";
+
     return (
-      <div key={block.id} {...sharedProps}>
-        <div className="block-handle" aria-hidden="true">
+      <span
+        key={block.id}
+        className={`block-node block-node--${block.type}${
+          isText ? " block-node--text" : " block-node--token"
+        }${contextClassName}`}
+        onClick={() => setActiveField(field)}
+      >
+        <span
+          className="block-handle"
+          aria-hidden="true"
+          draggable
+          onDragStart={(event) => handleBlockDragStart(event, field, block.id)}
+          onDragEnd={handleDragEnd}
+          title="Drag to reorder"
+        >
           ⋮
-        </div>
-        <div className="block-main">
-          <span className="block-label">{definition.label}</span>
-          {isText ? (
-            field === "body" ? (
-              <textarea
-                className="block-input"
-                rows={definition.minRows ?? 3}
-                value={block.text}
-                onFocus={() => setActiveField(field)}
-                onChange={(event) => handleTextChange(field, block.id, event.target.value)}
-              />
-            ) : (
-              <input
-                className="block-input"
-                value={block.text}
-                onFocus={() => setActiveField(field)}
-                onChange={(event) => handleTextChange(field, block.id, event.target.value)}
-              />
-            )
-          ) : null}
-          {contextKey && (
-            <div className="block-context">
-              <label className="block-context-label" htmlFor={`${block.id}-${contextKey}`}>
-                {definition.label} value
-              </label>
-              <input
-                id={`${block.id}-${contextKey}`}
-                className="block-context-input"
-                value={contextValues[contextKey] ?? ""}
-                onFocus={() => setActiveField(field)}
-                onChange={(event) => handleContextChange(contextKey, event.target.value)}
-                placeholder={
-                  contextKey === "studentName"
-                    ? "e.g. Denny"
-                    : contextKey === "studentSchool"
-                    ? "e.g. UBC"
-                    : contextKey === "role"
-                    ? "e.g. Data Analyst"
-                    : contextKey === "company"
-                    ? "e.g. Palantir"
-                    : ""
-                }
-              />
-            </div>
-          )}
-          {definition.description && <p className="block-description">{definition.description}</p>}
-        </div>
+        </span>
+        {isText ? (
+          <span
+            className="block-text"
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-label={`${definition.label} text`}
+            data-placeholder="Write text"
+            onFocus={() => setActiveField(field)}
+            onInput={(event) =>
+              handleTextChange(field, block.id, event.currentTarget.textContent ?? "")
+            }
+          >
+            {block.text}
+          </span>
+        ) : (
+          <span
+            className="block-token"
+            title={definition.description ? `${definition.description} • ${tokenTitle}` : tokenTitle}
+            role={contextKey ? "button" : undefined}
+            tabIndex={contextKey ? 0 : undefined}
+            onClick={contextKey ? handleTokenActivate : undefined}
+            onKeyDown={
+              contextKey
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleTokenActivate(event);
+                    }
+                  }
+                : undefined
+            }
+            onFocus={() => setActiveField(field)}
+          >
+            <span className="block-token-label">{tokenDisplay}</span>
+            {contextKey ? <span className="block-token-meta">{tokenMeta}</span> : null}
+          </span>
+        )}
         <button
           type="button"
           className="block-remove"
-          onClick={() => handleRemoveBlock(field, block.id)}
+          onClick={(event) => {
+            event.stopPropagation();
+            handleRemoveBlock(field, block.id);
+          }}
           aria-label={`Remove ${definition.label} block`}
         >
           ×
         </button>
-      </div>
+      </span>
     );
   };
 
   const renderDropTargets = (fieldBlocks, field) => {
     if (fieldBlocks.length === 0) {
       return [
-        <div
+        <span
           key={`${field}-empty`}
-          className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
+          className={`block-drop-target block-drop-target--empty${
+            dragState ? " block-drop-target--active" : ""
+          }`}
           onDragOver={handleDragOver}
           onDrop={(event) => handleDrop(field, 0, event)}
         />,
@@ -560,7 +598,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     const nodes = [];
     fieldBlocks.forEach((block, index) => {
       nodes.push(
-        <div
+        <span
           key={`${block.id}-before`}
           className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
           onDragOver={handleDragOver}
@@ -570,7 +608,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
       nodes.push(renderBlock(field, block));
     });
     nodes.push(
-      <div
+      <span
         key={`${field}-after`}
         className={`block-drop-target${dragState ? " block-drop-target--active" : ""}`}
         onDragOver={handleDragOver}
@@ -580,21 +618,25 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     return nodes;
   };
 
-  const renderFieldSection = (field, label, hint) => (
-    <div
-      key={field}
-      className={`block-field${activeField === field ? " block-field--active" : ""}`}
-      onClick={() => setActiveField(field)}
-    >
-      <div className="block-field-header">
-        <h3 className="block-field-title">{label}</h3>
-        <span className="block-field-hint">{hint}</span>
+  const renderFieldSection = (field, label, hint) => {
+    const hasBlocks = blocks[field].length > 0;
+    return (
+      <div
+        key={field}
+        className={`inline-field${activeField === field ? " inline-field--active" : ""}`}
+        onClick={() => setActiveField(field)}
+      >
+        <div className="inline-field-row">
+          <span className="inline-field-label">{label}:</span>
+          <div className="inline-field-editor" onDragOver={handleDragOver}>
+            {renderDropTargets(blocks[field], field)}
+            {!hasBlocks && <span className="inline-placeholder">Drag blocks here</span>}
+          </div>
+        </div>
+        {hint ? <div className="inline-field-hint">{hint}</div> : null}
       </div>
-      <div className="block-canvas" onDragOver={handleDragOver}>
-        {renderDropTargets(blocks[field], field)}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <section className="template-workspace" aria-labelledby="template-workspace-heading">
