@@ -435,6 +435,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
       return;
     }
     const payload = {
+      action: "email",
       template: {
         to: trimmedTo,
         subject: templateStrings.subject.trim(),
@@ -579,106 +580,62 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     return nodes;
   };
 
+  const renderFieldSection = (field, label, hint) => (
+    <div
+      key={field}
+      className={`block-field${activeField === field ? " block-field--active" : ""}`}
+      onClick={() => setActiveField(field)}
+    >
+      <div className="block-field-header">
+        <h3 className="block-field-title">{label}</h3>
+        <span className="block-field-hint">{hint}</span>
+      </div>
+      <div className="block-canvas" onDragOver={handleDragOver}>
+        {renderDropTargets(blocks[field], field)}
+      </div>
+    </div>
+  );
+
   return (
     <section className="template-workspace" aria-labelledby="template-workspace-heading">
       <h2 id="template-workspace-heading">Template Blocks</h2>
       <p className="template-intro">
-        Drag blocks into the email fields to shape your outreach. Each block sends its token to n8n while you edit the
-        friendly labels here.
+        Drag blocks into the email fields. Tokens stay hidden here but are sent to n8n when you deliver the email.
       </p>
 
       <div className="template-card template-card--builder">
         <div className="block-workspace">
-          <aside className="block-palette" aria-label="Block library">
-            <h3>Block Library</h3>
-            <p className="helper-text">Drag blocks into a field or click to add them to the active field.</p>
-            <div className="block-palette-list">
+          {renderFieldSection("to", "To", "Drag here to build this part.")}
+          <div className="block-palette block-palette--inline" aria-label="Block library">
+            <span className="block-palette-title">Blocks</span>
+            <div className="block-palette-list block-palette-list--inline">
               {BLOCK_LIBRARY.map((block) => (
                 <button
                   key={block.type}
                   type="button"
-                  className="block-palette-item"
+                  className="block-palette-item block-palette-item--chip"
+                  title={block.description}
                   draggable
                   onDragStart={(event) => handlePaletteDragStart(event, block.type)}
                   onDragEnd={handleDragEnd}
                   onClick={() => handlePaletteClick(block.type)}
                 >
-                  <span className="block-palette-label">{block.label}</span>
-                  <span className="block-palette-description">{block.description}</span>
+                  {block.label}
                 </button>
               ))}
             </div>
-          </aside>
-
-          <div className="block-fields">
-            {["to", "subject", "body"].map((field) => (
-              <div
-                key={field}
-                className={`block-field${activeField === field ? " block-field--active" : ""}`}
-                onClick={() => setActiveField(field)}
-              >
-                <div className="block-field-header">
-                  <h3 className="block-field-title">{field === "to" ? "To" : field === "subject" ? "Subject" : "Body"}</h3>
-                  <span className="block-field-hint">
-                    {field === "body"
-                      ? "Combine text, context, and the AI Draft block."
-                      : "Drag here to build this part."}
-                  </span>
-                </div>
-                <div className="block-canvas" onDragOver={handleDragOver}>
-                  {renderDropTargets(blocks[field], field)}
-                </div>
-              </div>
-            ))}
           </div>
+          {renderFieldSection("subject", "Subject", "Click a block to insert into the active field.")}
+          {renderFieldSection("body", "Body", "Combine text, context, and include the AI Draft block.")}
         </div>
+
         {!hasDraftBlock && (
           <div className="body-warning" role="alert">
             Add the AI Draft block to the body so the assistant knows where to write.
           </div>
         )}
-      </div>
 
-      <div className="template-card template-card--summary">
-        <div className="summary-section">
-          <h3>Recipients</h3>
-          {selectedContacts.length === 0 ? (
-            <p className="helper-text">Use the selection table above to choose who will receive this email.</p>
-          ) : (
-            <ul className="recipient-list">
-              {selectedContacts.map((contact, index) => (
-                <li key={`${contact.email}-${index}`}>
-                  <strong>{contact.name || contact.email}</strong>
-                  <span>{contact.email}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="summary-section">
-          <h3>Context</h3>
-          <div className="context-bubbles">
-            <div className="context-bubble">
-              <span className="context-label">Role</span>
-              <span className="context-value">{contextValues.role || "—"}</span>
-            </div>
-            <div className="context-bubble">
-              <span className="context-label">Company</span>
-              <span className="context-value">{contextValues.company || "—"}</span>
-            </div>
-            <div className="context-bubble">
-              <span className="context-label">Student Name</span>
-              <span className="context-value">{contextValues.studentName || "—"}</span>
-            </div>
-            <div className="context-bubble">
-              <span className="context-label">Student School</span>
-              <span className="context-value">{contextValues.studentSchool || "—"}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="send-actions">
+        <div className="send-actions send-actions--inline">
           <button type="button" className="button" onClick={handleSend} disabled={sending}>
             {sending ? <IconLoader /> : null}
             {sending ? "Sending…" : "Send to n8n"}
