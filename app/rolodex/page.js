@@ -870,6 +870,17 @@ export default function Rolodex() {
     [addRecipient, toInputValue]
   );
 
+  const handleEmailKeyDown = useCallback(
+    (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      handleBlur("email", event.currentTarget.value);
+    },
+    [handleBlur]
+  );
+
   const handleToInputBlur = useCallback(() => {
     const value = toInputValue.trim();
     if (value) {
@@ -2597,17 +2608,19 @@ export default function Rolodex() {
             </div>
           )}
 
-          {showJsonResponse && (
-            <pre className="response-view" aria-live="polite">
-              {JSON.stringify(response, null, 2)}
-            </pre>
-          )}
         </div>
 
-        {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
-          <div className="empty-footer">{emptyMessageMap[activePage]}</div>
+        {showJsonResponse && (
+          <pre className="response-view" aria-live="polite">
+            {JSON.stringify(response, null, 2)}
+          </pre>
         )}
-      </section>
-    </div>
+      </div>
+
+      {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
+        <div className="empty-footer">{emptyMessageMap[activePage]}</div>
+      )}
+    </section>
+  </div>
   );
 }
