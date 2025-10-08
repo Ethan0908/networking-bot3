@@ -345,6 +345,55 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     [activeField]
   );
 
+  const focusTextBlock = useCallback((field, blockId, collapseToEnd = true) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      const selector = `[data-block-field="${field}"][data-block-id="${blockId}"] .block-text`;
+      const node = document.querySelector(selector);
+      if (!node) {
+        return;
+      }
+      node.focus();
+      if (!collapseToEnd) {
+        return;
+      }
+      const selection = window.getSelection();
+      if (!selection) {
+        return;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  }, []);
+
+  const handleEditorClick = useCallback(
+    (field, event) => {
+      if (event.target instanceof Element && event.target.closest(".block-node")) {
+        return;
+      }
+      setActiveField(field);
+      const fieldBlocks = blocks[field];
+      const lastBlock = fieldBlocks[fieldBlocks.length - 1];
+      if (!lastBlock || lastBlock.type !== "text") {
+        const newBlock = createBlock("text");
+        setBlocks((prev) => {
+          const next = { ...prev };
+          next[field] = [...next[field], newBlock];
+          return next;
+        });
+        focusTextBlock(field, newBlock.id);
+        return;
+      }
+      focusTextBlock(field, lastBlock.id);
+    },
+    [blocks, focusTextBlock]
+  );
+
   const handleTextChange = useCallback((field, blockId, value) => {
     setBlocks((prev) => {
       const next = { ...prev };
@@ -511,24 +560,27 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
         : " block-node--context block-node--context-empty"
       : "";
 
+    const sharedProps = {
+      key: block.id,
+      className: `block-node block-node--${block.type}${
+        isText ? " block-node--text" : " block-node--token"
+      }${contextClassName}`,
+      "data-block-id": block.id,
+      "data-block-field": field,
+      "data-block-type": block.type,
+      draggable: !isText,
+      onDragStart: !isText
+        ? (event) => {
+            setActiveField(field);
+            handleBlockDragStart(event, field, block.id);
+          }
+        : undefined,
+      onDragEnd: !isText ? handleDragEnd : undefined,
+      onClick: () => setActiveField(field),
+    };
+
     return (
-      <span
-        key={block.id}
-        className={`block-node block-node--${block.type}${
-          isText ? " block-node--text" : " block-node--token"
-        }${contextClassName}`}
-        onClick={() => setActiveField(field)}
-      >
-        <span
-          className="block-handle"
-          aria-hidden="true"
-          draggable
-          onDragStart={(event) => handleBlockDragStart(event, field, block.id)}
-          onDragEnd={handleDragEnd}
-          title="Drag to reorder"
-        >
-          ⋮
-        </span>
+      <span {...sharedProps}>
         {isText ? (
           <span
             className="block-text"
@@ -546,38 +598,41 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
           </span>
         ) : (
           <span
-            className="block-token"
+            className={`block-token${contextKey ? " block-token--interactive" : ""}`}
             title={definition.description ? `${definition.description} • ${tokenTitle}` : tokenTitle}
-            role={contextKey ? "button" : undefined}
-            tabIndex={contextKey ? 0 : undefined}
+            role={contextKey ? "button" : "text"}
+            tabIndex={0}
             onClick={contextKey ? handleTokenActivate : undefined}
-            onKeyDown={
-              contextKey
-                ? (event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      handleTokenActivate(event);
-                    }
-                  }
-                : undefined
-            }
+            onKeyDown={(event) => {
+              if (event.key === "Backspace" || event.key === "Delete") {
+                event.preventDefault();
+                handleRemoveBlock(field, block.id);
+                return;
+              }
+              if (contextKey && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                handleTokenActivate(event);
+              }
+            }}
             onFocus={() => setActiveField(field)}
           >
             <span className="block-token-label">{tokenDisplay}</span>
             {contextKey ? <span className="block-token-meta">{tokenMeta}</span> : null}
           </span>
         )}
-        <button
-          type="button"
-          className="block-remove"
-          onClick={(event) => {
-            event.stopPropagation();
-            handleRemoveBlock(field, block.id);
-          }}
-          aria-label={`Remove ${definition.label} block`}
-        >
-          ×
-        </button>
+        {!isText && (
+          <button
+            type="button"
+            className="block-remove"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleRemoveBlock(field, block.id);
+            }}
+            aria-label={`Remove ${definition.label} block`}
+          >
+            ×
+          </button>
+        )}
       </span>
     );
   };
@@ -620,17 +675,40 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
 
   const renderFieldSection = (field, label, hint) => {
     const hasBlocks = blocks[field].length > 0;
+    const editorClassName = `inline-field-editor${
+      activeField === field ? " inline-field-editor--active" : ""
+    }`;
     return (
       <div
         key={field}
-        className={`inline-field${activeField === field ? " inline-field--active" : ""}`}
-        onClick={() => setActiveField(field)}
+        className="inline-field"
       >
         <div className="inline-field-row">
           <span className="inline-field-label">{label}:</span>
-          <div className="inline-field-editor" onDragOver={handleDragOver}>
+          <div
+            className={editorClassName}
+            onClick={(event) => handleEditorClick(field, event)}
+            onDragOver={handleDragOver}
+            onDrop={(event) => {
+              if (event.target !== event.currentTarget) {
+                return;
+              }
+              handleDrop(field, blocks[field].length, event);
+            }}
+            role="textbox"
+            aria-label={`${label} field builder`}
+            aria-multiline={field === "body" ? "true" : "false"}
+            tabIndex={0}
+            onFocus={(event) => {
+              if (event.target === event.currentTarget) {
+                handleEditorClick(field, event);
+              }
+            }}
+          >
             {renderDropTargets(blocks[field], field)}
-            {!hasBlocks && <span className="inline-placeholder">Drag blocks here</span>}
+            {!hasBlocks && (
+              <span className="inline-placeholder">Click to type or drag blocks</span>
+            )}
           </div>
         </div>
         {hint ? <div className="inline-field-hint">{hint}</div> : null}
@@ -685,7 +763,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
         </div>
 
         {sendError && (
-          <div className="inline-result" role="alert">
+          <div className="inline-result error" role="alert">
             {sendError}
           </div>
         )}
