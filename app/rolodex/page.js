@@ -157,6 +157,28 @@ const BLOCK_DEFINITIONS = BLOCK_LIBRARY.reduce((accumulator, block) => {
   return accumulator;
 }, {});
 
+const CONTEXT_FIELDS = [
+  { key: "role", label: "Role", placeholder: "Data Analyst", description: "Role you're pursuing" },
+  { key: "company", label: "Company", placeholder: "Palantir", description: "Target company" },
+  { key: "studentName", label: "Your Name", placeholder: "Denny", description: "Sender name" },
+  { key: "studentSchool", label: "School", placeholder: "UBC", description: "School or program" },
+];
+
+const CONTEXT_PLACEHOLDERS = CONTEXT_FIELDS.reduce((accumulator, field) => {
+  accumulator[field.key] = field.placeholder;
+  return accumulator;
+}, {});
+
+const TOKEN_PREVIEW_MAP = {
+  contactName: "Alex Johnson",
+  contactEmail: "alex@palantir.com",
+  role: CONTEXT_PLACEHOLDERS.role,
+  company: CONTEXT_PLACEHOLDERS.company,
+  studentName: CONTEXT_PLACEHOLDERS.studentName,
+  studentSchool: CONTEXT_PLACEHOLDERS.studentSchool,
+  draft: "AI will write this",
+};
+
 function createBlockId() {
   return `block-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -230,6 +252,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
   const [sendMessage, setSendMessage] = useState("");
   const [sendError, setSendError] = useState("");
   const [dragState, setDragState] = useState(null);
+  const contextInputRefs = useRef({});
 
   const selectedContacts = useMemo(() => {
     if (!Array.isArray(emailContacts) || emailContacts.length === 0) {
@@ -439,10 +462,10 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
       };
     });
     const payload = { contacts };
-    const trimmedRole = contextValues.role.trim();
-    const trimmedCompany = contextValues.company.trim();
-    const trimmedStudentName = contextValues.studentName.trim();
-    const trimmedStudentSchool = contextValues.studentSchool.trim();
+    const trimmedRole = (contextValues.role ?? "").trim();
+    const trimmedCompany = (contextValues.company ?? "").trim();
+    const trimmedStudentName = (contextValues.studentName ?? "").trim();
+    const trimmedStudentSchool = (contextValues.studentSchool ?? "").trim();
     if (trimmedRole) {
       payload.role = trimmedRole;
     }
@@ -526,17 +549,8 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
     const isText = block.type === "text";
     const contextKey = definition.contextKey;
     const contextValue = contextKey ? contextValues[contextKey] ?? "" : "";
-    const tokenDisplay =
-      block.type === "draft"
-        ? "[AI will write this]"
-        : contextKey && contextValue
-        ? contextValue
-        : definition.label;
-    const tokenMeta = contextKey
-      ? contextValue
-        ? definition.label
-        : "Set value"
-      : null;
+    const tokenDisplay = block.type === "draft" ? "AI Draft" : definition.label;
+    const tokenMeta = contextKey && !contextValue ? "Set value" : null;
     const tokenTitle = definition.token ? `{{${definition.token}}}` : definition.label;
 
     const handleTokenActivate = (event) => {
@@ -545,14 +559,32 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
       }
       event.stopPropagation();
       setActiveField(field);
-      if (typeof window === "undefined") {
-        return;
-      }
-      const next = window.prompt(`Set ${definition.label}`, contextValue);
-      if (next !== null) {
-        handleContextChange(contextKey, next);
+      const target = contextInputRefs.current?.[contextKey];
+      if (target && typeof target.focus === "function") {
+        target.focus();
+        if (typeof target.select === "function") {
+          target.select();
+        }
       }
     };
+
+    const contextExample = contextKey ? CONTEXT_PLACEHOLDERS[contextKey] ?? "" : "";
+    const selectedContact = selectedContacts[0] ?? {};
+    const previewValue = (() => {
+      if (contextKey) {
+        return contextValue || contextExample;
+      }
+      if (block.type === "contactName") {
+        return selectedContact.name || TOKEN_PREVIEW_MAP.contactName;
+      }
+      if (block.type === "contactEmail") {
+        return selectedContact.email || TOKEN_PREVIEW_MAP.contactEmail;
+      }
+      if (block.type === "draft") {
+        return TOKEN_PREVIEW_MAP.draft;
+      }
+      return TOKEN_PREVIEW_MAP[block.type] || definition.label;
+    })();
 
     const contextClassName = contextKey
       ? contextValue
@@ -569,6 +601,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
       "data-block-field": field,
       "data-block-type": block.type,
       draggable: !isText,
+      "data-preview": !isText && previewValue ? previewValue : undefined,
       onDragStart: !isText
         ? (event) => {
             setActiveField(field);
@@ -599,7 +632,7 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
         ) : (
           <span
             className={`block-token${contextKey ? " block-token--interactive" : ""}`}
-            title={definition.description ? `${definition.description} • ${tokenTitle}` : tokenTitle}
+            title={previewValue ? `${tokenTitle} → ${previewValue}` : tokenTitle}
             role={contextKey ? "button" : "text"}
             tabIndex={0}
             onClick={contextKey ? handleTokenActivate : undefined}
@@ -616,7 +649,13 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
             }}
             onFocus={() => setActiveField(field)}
           >
+            <span className="block-token-bracket" aria-hidden="true">
+              [
+            </span>
             <span className="block-token-label">{tokenDisplay}</span>
+            <span className="block-token-bracket" aria-hidden="true">
+              ]
+            </span>
             {contextKey ? <span className="block-token-meta">{tokenMeta}</span> : null}
           </span>
         )}
@@ -742,6 +781,29 @@ function EmailTemplateWorkspace({ pushToast, selectedRecipientIds = [], emailCon
                 >
                   {block.label}
                 </button>
+              ))}
+            </div>
+          </div>
+          <div className="context-panel" aria-label="Context inputs">
+            <span className="context-panel-title">Context values</span>
+            <div className="context-panel-grid">
+              {CONTEXT_FIELDS.map((field) => (
+                <label key={field.key} className="context-field">
+                  <span className="context-field-label">{field.label}</span>
+                  <input
+                    ref={(node) => {
+                      if (node) {
+                        contextInputRefs.current[field.key] = node;
+                      } else {
+                        delete contextInputRefs.current[field.key];
+                      }
+                    }}
+                    type="text"
+                    value={contextValues[field.key] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) => handleContextChange(field.key, event.target.value)}
+                  />
+                </label>
               ))}
             </div>
           </div>
