@@ -130,6 +130,18 @@ const BUILT_IN_PLACEHOLDERS = [
   { id: "draft", label: "[draft]", token: "{{draft}}" },
 ];
 
+function buildRewriteGuide(body) {
+  if (!body) return "";
+  return body.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
+    const normalized = String(key || "").trim();
+    if (!normalized) return "";
+    if (normalized === "draft") {
+      return "[[AI_DRAFT]]";
+    }
+    return `[[${normalized}]]`;
+  });
+}
+
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -1243,9 +1255,11 @@ export default function Rolodex() {
       company: campaignCompany || null,
       contacts: contactsPayload,
     };
+    const rewriteGuide = buildRewriteGuide(trimmedBody);
     const options = {
       batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
       dryRun: true,
+      rewriteGuide,
     };
 
     setIsGenerating(true);
@@ -1253,7 +1267,11 @@ export default function Rolodex() {
       const response = await fetch("/api/email-rewrite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ template: templatePayload, dataset, options }),
+        body: JSON.stringify({
+          template: { ...templatePayload, rewriteGuide },
+          dataset: { ...dataset, rewriteGuide },
+          options,
+        }),
       });
       const text = await response.text();
       let data;
@@ -1285,10 +1303,38 @@ export default function Rolodex() {
           isEditing: false,
         }))
       );
+      const sendSummary = Array.isArray(data?.sendResults)
+        ? data.sendResults.reduce(
+            (acc, item) => {
+              if (!item) return acc;
+              if (item.success) {
+                acc.sent += 1;
+              } else {
+                acc.failed += 1;
+              }
+              return acc;
+            },
+            { sent: 0, failed: 0 }
+          )
+        : null;
       pushToast(
         "success",
         `Generated ${emails.length} draft${emails.length === 1 ? "" : "s"}.`
       );
+      if (sendSummary) {
+        if (sendSummary.sent > 0) {
+          pushToast(
+            "success",
+            `Queued ${sendSummary.sent} email${sendSummary.sent === 1 ? "" : "s"} for delivery.`
+          );
+        }
+        if (sendSummary.failed > 0) {
+          pushToast(
+            "error",
+            `${sendSummary.failed} email${sendSummary.failed === 1 ? "" : "s"} failed to send.`
+          );
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to generate drafts.";
       pushToast("error", message);
