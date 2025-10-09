@@ -105,6 +105,26 @@ const SAMPLE_CONTACT_ID = String(
     1
 );
 
+const TEMPLATE_STORAGE_KEY = "rolodex-email-template";
+const PLACEHOLDER_STORAGE_KEY = "rolodex-email-custom-placeholders";
+const DEFAULT_TEMPLATE = {
+  to: ["{{contact.email}}"],
+  subject: "",
+  body: "",
+};
+const DEFAULT_PREVIEW_MESSAGE = "[AI will write this]";
+const DEFAULT_BATCH_SIZE = 10;
+
+const BUILT_IN_PLACEHOLDERS = [
+  { id: "contact.name", label: "[contact name]", token: "{{contact.name}}" },
+  { id: "contact.email", label: "[contact email]", token: "{{contact.email}}" },
+  { id: "company", label: "[company]", token: "{{company}}" },
+  { id: "role", label: "[role]", token: "{{role}}" },
+  { id: "student.name", label: "[your name]", token: "{{student.name}}" },
+  { id: "student.school", label: "[your school]", token: "{{student.school}}" },
+  { id: "draft", label: "[draft]", token: "{{draft}}" },
+];
+
 function validateEmail(value) {
   if (!value) {
     return { status: null, message: "" };
@@ -174,6 +194,52 @@ function formatRelativeTime(value) {
     return `${Math.abs(diffHours)} hour${Math.abs(diffHours) === 1 ? "" : "s"} ${diffHours > 0 ? "ago" : "from now"}`;
   }
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays > 0 ? "ago" : "from now"}`;
+}
+
+function getValueAtPath(source, path) {
+  if (!path) {
+    return undefined;
+  }
+  const keys = path.split(".");
+  let current = source;
+  for (const key of keys) {
+    if (current == null || typeof current !== "object") {
+      return undefined;
+    }
+    current = current[key];
+  }
+  return current;
+}
+
+function replaceTemplateTokens(template, context, options = {}) {
+  if (!template || typeof template !== "string") {
+    return "";
+  }
+  const { preserveDraft = false, draftReplacement = DEFAULT_PREVIEW_MESSAGE } = options;
+  return template.replace(/{{\s*([^{}\s]+(?:\.[^{}\s]+)*)\s*}}/g, (match, path) => {
+    if (path === "draft") {
+      return preserveDraft ? match : draftReplacement;
+    }
+    const value = getValueAtPath(context, path);
+    if (value == null) {
+      return match;
+    }
+    return String(value);
+  });
+}
+
+function resolveContactEmail(contact) {
+  if (!contact || typeof contact !== "object") {
+    return "";
+  }
+  return (
+    contact.email ??
+    contact.email_address ??
+    contact.emailAddress ??
+    contact.primary_email ??
+    contact.primaryEmail ??
+    ""
+  );
 }
 
 function IconInfo(props) {
@@ -297,7 +363,7 @@ export default function Rolodex() {
   const [email, setEmail] = useState("");
   const [profileUrl, setProfileUrl] = useState("");
   const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
+  const [emailBody, setEmailBody] = useState("");
   const [response, setResponse] = useState(null);
   const [inlineSummary, setInlineSummary] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -318,9 +384,97 @@ export default function Rolodex() {
   const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
   const [emailRecipients, setEmailRecipients] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [toChips, setToChips] = useState(() => [...DEFAULT_TEMPLATE.to]);
+  const [toInputValue, setToInputValue] = useState("");
+  const [customPlaceholders, setCustomPlaceholders] = useState([]);
+  const [lastFocusedField, setLastFocusedField] = useState("body");
+  const [previewContactId, setPreviewContactId] = useState("");
+  const [previewContent, setPreviewContent] = useState(null);
+  const [aiResults, setAiResults] = useState([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   const validationTimers = useRef({});
-  const emailButtonRef = useRef(null);
   const selectAllRef = useRef(null);
+  const subjectRef = useRef(null);
+  const bodyRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === "object") {
+          const storedTo = Array.isArray(parsed.to)
+            ? parsed.to.filter(Boolean).map(String)
+            : typeof parsed.to === "string"
+            ? parsed.to
+                .split(/[,\n]/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : [];
+          setToChips(storedTo.length > 0 ? storedTo : [...DEFAULT_TEMPLATE.to]);
+          setSubject(parsed.subject ?? "");
+          setEmailBody(parsed.body ?? "");
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load stored email template", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem(PLACEHOLDER_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setCustomPlaceholders(
+            parsed
+              .filter((item) => item && typeof item === "object" && item.token && item.label)
+              .map((item) => ({
+                id: item.id || item.token,
+                label: String(item.label),
+                token: String(item.token),
+              }))
+          );
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load custom placeholders", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const payload = {
+      to: toChips,
+      subject,
+      body: emailBody,
+    };
+    try {
+      window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn("Failed to persist template", error);
+    }
+  }, [emailBody, subject, toChips]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(PLACEHOLDER_STORAGE_KEY, JSON.stringify(customPlaceholders));
+    } catch (error) {
+      console.warn("Failed to persist custom placeholders", error);
+    }
+  }, [customPlaceholders]);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -510,17 +664,109 @@ export default function Rolodex() {
 
   const handleEmailKeyDown = handleSubjectKeyDown;
 
-  const handleMessageKeyDown = useCallback(
+  const addToChip = useCallback(
+    (value) => {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      if (!trimmed) {
+        return false;
+      }
+      if (trimmed === "{{contact.email}}") {
+        setToChips((prev) => [...prev, trimmed]);
+        return true;
+      }
+      if (!EMAIL_REGEX.test(trimmed)) {
+        pushToast("error", "Enter a valid email or use {{contact.email}}.");
+        return false;
+      }
+      setToChips((prev) => [...prev, trimmed]);
+      return true;
+    },
+    [pushToast]
+  );
+
+  const handleToInputKeyDown = useCallback(
     (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      if (event.key === "Enter" || event.key === "," || event.key === ";") {
         event.preventDefault();
-        if (emailButtonRef.current) {
-          emailButtonRef.current.click();
+        if (addToChip(toInputValue)) {
+          setToInputValue("");
         }
+        return;
+      }
+      if (event.key === "Backspace" && !toInputValue) {
+        setToChips((prev) => prev.slice(0, -1));
       }
     },
-    []
+    [addToChip, toInputValue]
   );
+
+  const handleToInputBlur = useCallback(() => {
+    if (addToChip(toInputValue)) {
+      setToInputValue("");
+    }
+  }, [addToChip, toInputValue]);
+
+  const handleRemoveChip = useCallback((index) => {
+    setToChips((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  }, []);
+
+  const handleInsertPlaceholder = useCallback(
+    (token) => {
+      if (!token) {
+        return;
+      }
+      const targetRef = lastFocusedField === "subject" ? subjectRef : bodyRef;
+      const setter = lastFocusedField === "subject" ? setSubject : setEmailBody;
+      const currentValue = lastFocusedField === "subject" ? subject : emailBody;
+      const element = targetRef.current;
+      if (!element) {
+        setter((prev) => `${prev}${prev ? (prev.endsWith(" ") ? "" : " ") : ""}${token}`);
+        return;
+      }
+      const start = element.selectionStart ?? currentValue.length;
+      const end = element.selectionEnd ?? currentValue.length;
+      const nextValue = `${currentValue.slice(0, start)}${token}${currentValue.slice(end)}`;
+      setter(nextValue);
+      requestAnimationFrame(() => {
+        element.focus();
+        const cursor = start + token.length;
+        element.setSelectionRange(cursor, cursor);
+      });
+    },
+    [emailBody, lastFocusedField, subject]
+  );
+
+  const handleAddCustomPlaceholder = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const labelInput = window.prompt("Placeholder label", "");
+    if (!labelInput) {
+      return;
+    }
+    const pathInput = window.prompt("Data path (e.g., contact.website)", "");
+    if (!pathInput) {
+      return;
+    }
+    const label = labelInput.trim();
+    const normalizedPath = pathInput.trim();
+    if (!label || !normalizedPath) {
+      pushToast("error", "Placeholder label and path are required.");
+      return;
+    }
+    const cleanedPath = normalizedPath.replace(/^{{\s*/, "").replace(/\s*}}$/, "");
+    const token = `{{${cleanedPath}}}`;
+    if (
+      customPlaceholders.some((item) => item.token === token) ||
+      BUILT_IN_PLACEHOLDERS.some((item) => item.token === token)
+    ) {
+      pushToast("info", "Placeholder already exists.");
+      return;
+    }
+    const id = `${cleanedPath}-${Date.now().toString(36)}`;
+    setCustomPlaceholders((prev) => [...prev, { id, label, token }]);
+    pushToast("success", "Placeholder added.");
+  }, [customPlaceholders, pushToast]);
 
   const resolveContactId = useCallback((record) => {
     if (!record || typeof record !== "object") {
@@ -572,9 +818,12 @@ export default function Rolodex() {
         .filter((record) => record.__contactId);
       if (normalized.length > 0) {
         setEmailContacts(normalized);
+        setPreviewContactId(normalized[0]?.__contactId || "");
       } else {
         setEmailContacts([]);
+        setPreviewContactId("");
       }
+      setPreviewContent(null);
       setEmailRecipients([]);
       setIsSampleEmailContacts(false);
       if (normalized.length === 0) {
@@ -643,6 +892,409 @@ export default function Rolodex() {
     setEmailRecipients((prev) => (allRecipientsSelected ? [] : allRecipientIds));
   }, [allRecipientIds, allRecipientsSelected]);
 
+  const handleSaveTemplate = useCallback(() => {
+    if (typeof window === "undefined") {
+      pushToast("error", "Local storage is unavailable.");
+      return;
+    }
+    const payload = {
+      to: toChips,
+      subject,
+      body: emailBody,
+      customPlaceholders,
+    };
+    try {
+      window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(PLACEHOLDER_STORAGE_KEY, JSON.stringify(customPlaceholders));
+      pushToast("success", "Template saved to this browser.");
+    } catch (error) {
+      pushToast("error", "Unable to save the template.");
+    }
+  }, [customPlaceholders, emailBody, pushToast, subject, toChips]);
+
+  const handleResetTemplate = useCallback(() => {
+    setToChips([...DEFAULT_TEMPLATE.to]);
+    setSubject(DEFAULT_TEMPLATE.subject);
+    setEmailBody(DEFAULT_TEMPLATE.body);
+    setToInputValue("");
+    setPreviewContent(null);
+    pushToast("info", "Template cleared.");
+  }, [pushToast]);
+
+  const placeholderLibrary = useMemo(() => {
+    const seen = new Set();
+    const combined = [...BUILT_IN_PLACEHOLDERS, ...customPlaceholders];
+    return combined.filter((item) => {
+      if (!item || !item.token) {
+        return false;
+      }
+      const token = String(item.token);
+      if (seen.has(token)) {
+        return false;
+      }
+      seen.add(token);
+      return true;
+    });
+  }, [customPlaceholders]);
+
+  const invalidToChips = useMemo(
+    () =>
+      toChips.filter(
+        (chip) =>
+          chip &&
+          chip !== "{{contact.email}}" &&
+          !EMAIL_REGEX.test(chip)
+      ),
+    [toChips]
+  );
+
+  const toErrorMessage = useMemo(() => {
+    if (invalidToChips.length === 0) {
+      return "";
+    }
+    if (invalidToChips.length === 1) {
+      return `${invalidToChips[0]} is not a valid email.`;
+    }
+    return `${invalidToChips.length} invalid email addresses.`;
+  }, [invalidToChips]);
+
+  const hasValidToValue = useMemo(
+    () =>
+      toChips.some(
+        (chip) => chip === "{{contact.email}}" || (chip && EMAIL_REGEX.test(chip))
+      ),
+    [toChips]
+  );
+
+  const bodyMissingDraft = useMemo(
+    () => !emailBody.toLowerCase().includes("{{draft}}"),
+    [emailBody]
+  );
+
+  const subjectCharCount = useMemo(() => subject.length, [subject]);
+
+  const contactMap = useMemo(() => {
+    const map = new Map();
+    for (const contact of emailContacts) {
+      const id = contact.__contactId || resolveContactId(contact);
+      if (id) {
+        map.set(String(id), contact);
+      }
+    }
+    return map;
+  }, [emailContacts, resolveContactId]);
+
+  const selectedContacts = useMemo(() => {
+    if (!emailRecipients || emailRecipients.length === 0) {
+      return emailContacts;
+    }
+    const allowed = new Set(emailRecipients.map(String));
+    return emailContacts.filter((contact) => {
+      const id = contact.__contactId || resolveContactId(contact);
+      return id && allowed.has(String(id));
+    });
+  }, [emailContacts, emailRecipients, resolveContactId]);
+
+  const contactsWithEmails = useMemo(
+    () =>
+      selectedContacts.filter((contact) => {
+        const emailValue = resolveContactEmail(contact);
+        return emailValue && EMAIL_REGEX.test(String(emailValue));
+      }),
+    [selectedContacts]
+  );
+
+  const hasValidContactEmail = useMemo(
+    () => contactsWithEmails.length > 0,
+    [contactsWithEmails]
+  );
+
+  const previewContact = useMemo(() => {
+    if (!previewContactId) {
+      return null;
+    }
+    return contactMap.get(String(previewContactId)) || null;
+  }, [contactMap, previewContactId]);
+
+  const aiIncludedResults = useMemo(
+    () => aiResults.filter((result) => !result.excluded),
+    [aiResults]
+  );
+
+  const canGenerate = useMemo(() => {
+    if (isGenerating) {
+      return false;
+    }
+    return (
+      subject.trim().length > 0 &&
+      emailBody.trim().length > 0 &&
+      !bodyMissingDraft &&
+      hasValidToValue &&
+      invalidToChips.length === 0 &&
+      hasValidContactEmail
+    );
+  }, [
+    bodyMissingDraft,
+    emailBody,
+    hasValidContactEmail,
+    hasValidToValue,
+    invalidToChips,
+    isGenerating,
+    subject,
+  ]);
+
+  useEffect(() => {
+    if (emailContacts.length === 0) {
+      if (previewContactId) {
+        setPreviewContactId("");
+      }
+      return;
+    }
+
+    const ids = emailContacts
+      .map((contact) => contact.__contactId || resolveContactId(contact))
+      .filter(Boolean)
+      .map(String);
+
+    if (ids.length === 0) {
+      if (previewContactId) {
+        setPreviewContactId("");
+      }
+      return;
+    }
+
+    if (!previewContactId || !ids.includes(String(previewContactId))) {
+      const nextId = ids[0];
+      if (nextId && nextId !== previewContactId) {
+        setPreviewContactId(nextId);
+      }
+    }
+  }, [emailContacts, previewContactId, resolveContactId]);
+
+  const handlePreviewTemplate = useCallback(() => {
+    const contactCandidate = previewContact || contactsWithEmails[0] || emailContacts[0];
+    if (!contactCandidate) {
+      pushToast("info", "Load a contact to preview.");
+      setPreviewContent(null);
+      return;
+    }
+    const contactEmail = resolveContactEmail(contactCandidate);
+    const previewTo = toChips
+      .map((chip) => (chip === "{{contact.email}}" ? contactEmail || "[missing email]" : chip))
+      .join(", ");
+    const context = {
+      contact: contactCandidate,
+      company:
+        contactCandidate.company ??
+        contactCandidate.organization ??
+        contactCandidate.company_name ??
+        null,
+      role: contactCandidate.title ?? contactCandidate.role ?? null,
+      student: {},
+    };
+    const previewSubject = replaceTemplateTokens(subject, context, {
+      preserveDraft: true,
+    });
+    const previewBody = replaceTemplateTokens(emailBody, context, {
+      preserveDraft: false,
+      draftReplacement: DEFAULT_PREVIEW_MESSAGE,
+    });
+    const id =
+      contactCandidate.__contactId || resolveContactId(contactCandidate) || "preview";
+    setPreviewContent({
+      to: previewTo,
+      subject: previewSubject,
+      body: previewBody,
+      contactId: id,
+    });
+    pushToast("info", "Preview updated.");
+  }, [
+    contactsWithEmails,
+    emailBody,
+    emailContacts,
+    previewContact,
+    pushToast,
+    resolveContactEmail,
+    resolveContactId,
+    subject,
+    toChips,
+  ]);
+
+  const handleGenerateEmails = useCallback(async () => {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = emailBody.trim();
+    if (!trimmedSubject) {
+      pushToast("error", "Subject is required before generating drafts.");
+      return;
+    }
+    if (!trimmedBody) {
+      pushToast("error", "Body is required before generating drafts.");
+      return;
+    }
+    if (bodyMissingDraft) {
+      pushToast("error", "Body must include {{draft}}.");
+      return;
+    }
+    if (!hasValidToValue || invalidToChips.length > 0) {
+      pushToast("error", "Fix recipient emails before generating.");
+      return;
+    }
+    if (!hasValidContactEmail) {
+      pushToast("error", "Load at least one contact with a valid email.");
+      return;
+    }
+
+    const contactsPayload = contactsWithEmails.map((contact) => ({ ...contact }));
+    const templatePayload = {
+      to: toChips.join(", "),
+      subject: trimmedSubject,
+      body: trimmedBody,
+      repeat: { over: "contacts", as: "contact" },
+    };
+    const dataset = {
+      student: null,
+      role: null,
+      company: null,
+      contacts: contactsPayload,
+    };
+    const options = {
+      batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
+      dryRun: true,
+    };
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch("/api/email-rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template: templatePayload, dataset, options }),
+      });
+      const text = await response.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+      if (!response.ok) {
+        const message =
+          (data && typeof data === "object" && data.error) ||
+          response.statusText ||
+          "Failed to generate drafts.";
+        throw new Error(message);
+      }
+      const emails = Array.isArray(data?.emails) ? data.emails : [];
+      if (emails.length === 0) {
+        setAiResults([]);
+        pushToast("info", "No drafts returned.");
+        return;
+      }
+      setAiResults(
+        emails.map((item, index) => ({
+          id: `${index}-${item?.to ?? ""}`,
+          to: item?.to ?? "",
+          subject: item?.subject ?? "",
+          body: item?.body ?? "",
+          excluded: false,
+          isEditing: false,
+        }))
+      );
+      pushToast(
+        "success",
+        `Generated ${emails.length} draft${emails.length === 1 ? "" : "s"}.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to generate drafts.";
+      pushToast("error", message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [
+    bodyMissingDraft,
+    contactsWithEmails,
+    emailBody,
+    hasValidContactEmail,
+    hasValidToValue,
+    invalidToChips,
+    pushToast,
+    subject,
+    toChips,
+  ]);
+
+  const handleToggleResultExclude = useCallback((index) => {
+    setAiResults((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, excluded: !item.excluded } : item
+      )
+    );
+  }, []);
+
+  const handleToggleResultEdit = useCallback((index) => {
+    setAiResults((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, isEditing: !item.isEditing } : item
+      )
+    );
+  }, []);
+
+  const handleResultFieldChange = useCallback((index, field, value) => {
+    setAiResults((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      )
+    );
+  }, []);
+
+  const handleDownloadResults = useCallback(
+    (format) => {
+      if (typeof window === "undefined") {
+        pushToast("error", "Downloads are not supported in this environment.");
+        return;
+      }
+      const rows = aiIncludedResults;
+      if (!rows || rows.length === 0) {
+        pushToast("info", "No drafts to download.");
+        return;
+      }
+      try {
+        let blob;
+        let filename;
+        if (format === "csv") {
+          const header = ["to", "subject", "body"];
+          const csvLines = [header.join(",")];
+          for (const row of rows) {
+            const values = header.map((key) => {
+              const raw = row[key] ?? "";
+              const normalized = String(raw).replace(/"/g, '""');
+              return `"${normalized}"`;
+            });
+            csvLines.push(values.join(","));
+          }
+          blob = new Blob([csvLines.join("\n")], {
+            type: "text/csv;charset=utf-8;",
+          });
+          filename = "email-drafts.csv";
+        } else {
+          const json = JSON.stringify(rows, null, 2);
+          blob = new Blob([json], { type: "application/json" });
+          filename = "email-drafts.json";
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        pushToast("success", `Downloaded drafts as ${format.toUpperCase()}.`);
+      } catch (error) {
+        pushToast("error", "Unable to download drafts.");
+      }
+    },
+    [aiIncludedResults, pushToast]
+  );
+
   const resetResponses = useCallback(() => {
     setResponse(null);
     setInlineSummary("");
@@ -703,16 +1355,6 @@ export default function Rolodex() {
         }
       }
 
-      if (action === "email") {
-        if (emailRecipients.length === 0) {
-          const messageText = "Select at least one contact to email.";
-          setErrorMessage(messageText);
-          pushToast("error", messageText);
-          setLoadingAction(null);
-          return;
-        }
-      }
-
       if (action === "view" && !trimmedUsernameValue) {
         const message = "Username is required to view a contact.";
         setErrorMessage(message);
@@ -733,32 +1375,6 @@ export default function Rolodex() {
 
       if (action === "create" || action === "view" || action === "update") {
         Object.assign(body, contactDetails);
-      }
-
-      if (action === "email") {
-        const trimmedSubject = subject.trim();
-        const trimmedMessage = message.trim();
-        if (!trimmedMessage) {
-          const messageText = "Message is required to send an email.";
-          setErrorMessage(messageText);
-          pushToast("error", messageText);
-          setLoadingAction(null);
-          return;
-        }
-        const normalizedRecipients = emailRecipients.map((value) => {
-          const numeric = Number(value);
-          return Number.isNaN(numeric) ? value : numeric;
-        });
-        body.recipient_ids = normalizedRecipients;
-        if (normalizedRecipients.length === 1) {
-          body.local_id = normalizedRecipients[0];
-        } else if (normalizedRecipients.length > 1) {
-          body.local_ids = normalizedRecipients;
-        }
-        if (trimmedSubject) {
-          body.subject = trimmedSubject;
-        }
-        body.message = trimmedMessage;
       }
 
       try {
@@ -787,8 +1403,6 @@ export default function Rolodex() {
           pushToast("success", "Contact created.");
         } else if (action === "update") {
           pushToast("success", "Contact updated.");
-        } else if (action === "email") {
-          pushToast("success", "Email sent.");
         } else if (action === "view") {
           if (!data || (Array.isArray(data) && data.length === 0)) {
             pushToast("info", "0 results found.");
@@ -812,14 +1426,11 @@ export default function Rolodex() {
       email,
       fullName,
       location,
-      message,
       profileUrl,
       pushToast,
       resetResponses,
-      subject,
       title,
       username,
-      emailRecipients,
     ]
   );
 
@@ -987,7 +1598,7 @@ export default function Rolodex() {
     create: "Fill in contact details to create a new record.",
     view: "Load a contact to preview their profile information.",
     update: "Update fields above and save your changes.",
-    email: "Load contacts, pick recipients, and compose your message.",
+    email: "Compose a template and generate AI drafts for your contacts.",
   };
 
   const sampleViewRecord = useMemo(
@@ -1245,228 +1856,451 @@ export default function Rolodex() {
             </div>
           )}
 
-          {activePage === "email" && (
+                    {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
-              <form className="rolodex-form" onSubmit={handleSubmit} noValidate>
-                <div className="recipients-block">
-                  <div className="recipients-toolbar">
-                    <span id="recipient-label" className="recipients-title">
-                      Recipients
-                    </span>
-                    <div className="recipient-controls">
-                      <button
-                        type="button"
-                        className="button tertiary load-contacts-button"
-                        onClick={handleLoadEmailContacts}
-                        disabled={loadingContacts}
-                        aria-busy={loadingContacts}
-                      >
-                        {loadingContacts ? <IconLoader /> : null}
-                        {loadingContacts ? "Loading…" : "Load Contacts"}
-                      </button>
-                    </div>
+              <div className="email-composer-card">
+                <div className="ai-style-badge">AI writes in Canadian English.</div>
+                <div className={`field${toErrorMessage ? " error" : ""}`}>
+                  <label
+                    className="field-label"
+                    id="emailToInput-label"
+                    htmlFor="emailToInput"
+                  >
+                    To
+                  </label>
+                  <div
+                    className={`chip-input${toErrorMessage ? " error" : ""}`}
+                    role="group"
+                    aria-labelledby="emailToInput-label"
+                  >
+                    {toChips.map((chip, index) => {
+                      const isToken = chip === "{{contact.email}}";
+                      const isInvalid = invalidToChips.includes(chip);
+                      return (
+                        <span
+                          key={`${chip}-${index}`}
+                          className={`chip${isToken ? " token" : ""}${isInvalid ? " invalid" : ""}`}
+                        >
+                          <span>{chip}</span>
+                          <button
+                            type="button"
+                            className="chip-remove"
+                            onClick={() => handleRemoveChip(index)}
+                            aria-label={`Remove recipient ${chip}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                    <input
+                      id="emailToInput"
+                      className="chip-input-field"
+                      value={toInputValue}
+                      onChange={(event) => setToInputValue(event.target.value)}
+                      onKeyDown={handleToInputKeyDown}
+                      onBlur={handleToInputBlur}
+                      placeholder="Type an email and press Enter"
+                      autoComplete="off"
+                    />
                   </div>
-                  {emailContacts.length === 0 ? (
-                    <p className="recipient-placeholder">Load contacts to choose recipients.</p>
-                  ) : (
-                    <div
-                      className="table-scroll recipient-table-scroll"
-                      role="group"
-                      aria-labelledby="recipient-label"
-                    >
-                      <table className="view-table recipient-table">
-                        {isSampleEmailContacts && (
-                          <caption className="view-table-caption">
-                            Sample contact shown. Load a contact to see live data.
-                          </caption>
-                        )}
-                        <thead>
-                          <tr>
-                            <th scope="col" className="select-header">
-                              <div className="select-header-content">
-                                <span className="select-header-label">Select</span>
-                                <label className="select-all-control">
-                                  <input
-                                    ref={selectAllRef}
-                                    type="checkbox"
-                                    onChange={handleToggleSelectAll}
-                                    checked={allRecipientsSelected}
-                                    disabled={allRecipientIds.length === 0}
-                                    aria-label="Select all recipients"
-                                  />
-                                  <span>Select all</span>
-                                </label>
-                              </div>
-                            </th>
-                            <th scope="col">Contact ID</th>
-                            <th scope="col">Full Name</th>
-                            <th scope="col">Title</th>
-                            <th scope="col">Company</th>
-                            <th scope="col">Location</th>
-                            <th scope="col">Profile URL</th>
-                            <th scope="col">Email</th>
-                            <th scope="col">Engagement</th>
-                            <th scope="col">Last Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {emailContacts.map((contact) => {
-                            const id = contact.__contactId || resolveContactId(contact);
-                            if (!id) {
-                              return null;
-                            }
-                            const normalizedId = String(id);
-                            const isSelected = emailRecipients.includes(normalizedId);
-                            const profileLink = formatProfileHref(
-                              contact.profile_url ?? contact.profileUrl
-                            );
-                            const engagement = computeEngagementStatus(contact);
-                            const lastUpdatedDisplay = formatTimestamp(
-                              contact.last_updated ?? contact.updated_at ?? contact.updatedAt
-                            );
-                            const lastMessagedDisplay = formatTimestamp(
-                              contact.last_contacted ??
-                                contact.last_messaged ??
-                                contact.lastMessaged ??
-                                contact.last_contacted_at
-                            );
-                            const contactIdValue = String(id);
-                            const nameLabel =
-                              contact.full_name ?? contact.fullName ?? `Contact ${normalizedId}`;
-                            return (
-                              <tr
-                                key={normalizedId}
-                                className={isSelected ? "selected" : ""}
-                                aria-selected={isSelected}
-                                onClick={(event) => handleRecipientRowClick(event, normalizedId)}
-                              >
-                                <td className="select-cell">
-                                  <button
-                                    type="button"
-                                    className={`select-toggle${isSelected ? " selected" : ""}`}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleToggleRecipient(normalizedId);
-                                    }}
-                                    aria-pressed={isSelected}
-                                    aria-label={`${isSelected ? "Deselect" : "Select"} ${nameLabel}`}
-                                  >
-                                    <span className="select-indicator" aria-hidden="true" />
-                                  </button>
-                                </td>
-                                <td className="contact-id-cell">
-                                  {contactIdValue ? (
-                                    <button
-                                      type="button"
-                                      className="contact-id-button"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        copyContactIdToClipboard(contactIdValue);
-                                      }}
-                                      aria-label={`Copy contact ID ${contactIdValue}`}
-                                    >
-                                      <span>{contactIdValue}</span>
-                                      <IconCopy />
-                                    </button>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </td>
-                                <td>{contact.full_name ?? contact.fullName ?? "—"}</td>
-                                <td>{contact.title ?? "—"}</td>
-                                <td>{contact.company ?? "—"}</td>
-                                <td>{contact.location ?? "—"}</td>
-                                <td>
-                                  {profileLink ? (
-                                    <a href={profileLink} target="_blank" rel="noreferrer">
-                                      {contact.profile_url ?? contact.profileUrl}
-                                    </a>
-                                  ) : (
-                                    "—"
-                                  )}
-                                </td>
-                                <td>{contact.email ?? "—"}</td>
-                                <td>
-                                  <div className="engagement-cell">
-                                    <span
-                                      className={`status-dot ${engagement.color}`}
-                                      title={
-                                        lastMessagedDisplay === "—"
-                                          ? engagement.label
-                                          : `${engagement.label} (${lastMessagedDisplay})`
-                                      }
-                                      aria-label={
-                                        lastMessagedDisplay === "—"
-                                          ? engagement.label
-                                          : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
-                                      }
-                                    />
-                                    <span className="status-text">{engagement.label}</span>
-                                  </div>
-                                </td>
-                                <td>{lastUpdatedDisplay}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  <div className="helper-text recipients-helper">
-                    {emailRecipients.length > 0
-                      ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
-                      : "No recipients selected."}
+                  <div className={`validation-text${toErrorMessage ? " error" : ""}`}>
+                    {toErrorMessage || "Use Enter to add addresses or {{contact.email}}."}
                   </div>
                 </div>
 
-                <div className="rolodex-form-grid email-inputs">
+                <div className="placeholder-toolbar">
+                  <span className="placeholder-label">Placeholders</span>
+                  <div className="placeholder-chip-row">
+                    {placeholderLibrary.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="placeholder-chip"
+                        onClick={() => handleInsertPlaceholder(item.token)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="placeholder-chip add"
+                      onClick={handleAddCustomPlaceholder}
+                    >
+                      Add custom placeholder…
+                    </button>
+                  </div>
+                </div>
+
+                <div className="composer-grid">
                   <div className="field">
                     <label className="field-label" htmlFor="subject">
                       Subject
                     </label>
                     <input
                       id="subject"
+                      ref={subjectRef}
                       className="text-input"
                       value={subject}
                       onChange={(event) => setSubject(event.target.value)}
                       onKeyDown={handleSubjectKeyDown}
+                      onFocus={() => setLastFocusedField("subject")}
                       placeholder="Subject"
                     />
-                    <div className="helper-text" />
+                    <div className="helper-text">Characters: {subjectCharCount}</div>
                   </div>
-
-                  <div className="field double">
-                    <label className="field-label" htmlFor="message">
-                      Message
+                  <div className={`field double${bodyMissingDraft ? " warning" : ""}`}>
+                    <label className="field-label" htmlFor="emailBody">
+                      Body
                     </label>
                     <textarea
-                      id="message"
+                      id="emailBody"
+                      ref={bodyRef}
                       className="text-area"
-                      value={message}
-                      onChange={(event) => setMessage(event.target.value)}
-                      onKeyDown={handleMessageKeyDown}
-                      placeholder="Message"
-                      rows={6}
+                      value={emailBody}
+                      onChange={(event) => setEmailBody(event.target.value)}
+                      onFocus={() => setLastFocusedField("body")}
+                      placeholder="Write your email template with placeholders"
+                      rows={8}
                     />
-                    <div className="helper-text">
-                      Press ⌘/Ctrl + Enter to send.
+                    <div className={`helper-text${bodyMissingDraft ? " error" : ""}`}>
+                      {bodyMissingDraft
+                        ? "Add {{draft}} so AI can complete the message."
+                        : "Insert placeholders where needed. {{draft}} will be filled by AI."}
                     </div>
                   </div>
                 </div>
-                <div className="action-row">
-                  <button
-                    ref={emailButtonRef}
-                    type="submit"
-                    value="email"
-                    className="button ghost"
-                    disabled={disableSubmit}
-                    aria-busy={loadingAction === "email"}
-                  >
-                    {loadingAction === "email" ? <IconLoader /> : null}
-                    {loadingAction === "email" ? "Sending…" : "Email"}
-                  </button>
+
+                <div className="composer-actions">
+                  <div className="composer-actions-left">
+                    <button type="button" className="button secondary" onClick={handleSaveTemplate}>
+                      Save as template
+                    </button>
+                    <button type="button" className="button tertiary" onClick={handleResetTemplate}>
+                      Reset
+                    </button>
+                  </div>
+                  <div className="composer-actions-right">
+                    <div className="preview-selector">
+                      <label htmlFor="previewContact">Preview contact</label>
+                      <select
+                        id="previewContact"
+                        className="select-input"
+                        value={previewContactId}
+                        onChange={(event) => setPreviewContactId(event.target.value)}
+                        disabled={emailContacts.length === 0}
+                      >
+                        {emailContacts.length === 0 ? (
+                          <option value="">Load contacts to preview</option>
+                        ) : (
+                          emailContacts.map((contact) => {
+                            const id = contact.__contactId || resolveContactId(contact);
+                            if (!id) {
+                              return null;
+                            }
+                            const name = contact.full_name ?? contact.fullName ?? "Unknown contact";
+                            const emailValue = resolveContactEmail(contact);
+                            const label = emailValue ? `${name} (${emailValue})` : name;
+                            return (
+                              <option key={id} value={id}>
+                                {label}
+                              </option>
+                            );
+                          })
+                        )}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="button ghost"
+                      onClick={handlePreviewTemplate}
+                      disabled={emailContacts.length === 0}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={handleGenerateEmails}
+                      disabled={!canGenerate || isGenerating}
+                      aria-busy={isGenerating}
+                    >
+                      {isGenerating ? <IconLoader /> : null}
+                      {isGenerating ? "Generating…" : "Generate with AI (dry run)"}
+                    </button>
+                  </div>
                 </div>
-              </form>
+
+                {previewContent && (
+                  <div className="preview-panel" aria-live="polite">
+                    <div className="preview-header">
+                      <h3>Preview</h3>
+                      {previewContact ? (
+                        <span className="preview-contact-name">
+                          {previewContact.full_name ?? previewContact.fullName ?? ""}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="preview-meta">
+                      <div>
+                        <span className="preview-meta-label">To</span>
+                        <span className="preview-meta-value">{previewContent.to || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="preview-meta-label">Subject</span>
+                        <span className="preview-meta-value">{previewContent.subject || "—"}</span>
+                      </div>
+                    </div>
+                    <pre className="preview-body">{previewContent.body || ""}</pre>
+                  </div>
+                )}
+              </div>
+
+              <div className="recipients-block">
+                <div className="recipients-toolbar">
+                  <span id="recipient-label" className="recipients-title">
+                    Contacts
+                  </span>
+                  <div className="recipient-controls">
+                    <button
+                      type="button"
+                      className="button tertiary load-contacts-button"
+                      onClick={handleLoadEmailContacts}
+                      disabled={loadingContacts}
+                      aria-busy={loadingContacts}
+                    >
+                      {loadingContacts ? <IconLoader /> : null}
+                      {loadingContacts ? "Loading…" : "Load Contacts"}
+                    </button>
+                  </div>
+                </div>
+                {emailContacts.length === 0 ? (
+                  <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                ) : (
+                  <div
+                    className="table-scroll recipient-table-scroll"
+                    role="group"
+                    aria-labelledby="recipient-label"
+                  >
+                    <table className="view-table recipient-table">
+                      {isSampleEmailContacts && (
+                        <caption className="view-table-caption">
+                          Sample contact shown. Load a contact to see live data.
+                        </caption>
+                      )}
+                      <thead>
+                        <tr>
+                          <th scope="col" className="select-header">
+                            <div className="select-header-content">
+                              <span className="select-header-label">Select</span>
+                              <label className="select-all-control">
+                                <input
+                                  ref={selectAllRef}
+                                  type="checkbox"
+                                  onChange={handleToggleSelectAll}
+                                  checked={allRecipientsSelected}
+                                  disabled={allRecipientIds.length === 0}
+                                  aria-label="Select all recipients"
+                                />
+                                <span>Select all</span>
+                              </label>
+                            </div>
+                          </th>
+                          <th scope="col">Contact ID</th>
+                          <th scope="col">Full Name</th>
+                          <th scope="col">Title</th>
+                          <th scope="col">Company</th>
+                          <th scope="col">Location</th>
+                          <th scope="col">Profile URL</th>
+                          <th scope="col">Email</th>
+                          <th scope="col">Engagement</th>
+                          <th scope="col">Last Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailContacts.map((contact) => {
+                          const id = contact.__contactId || resolveContactId(contact);
+                          if (!id) {
+                            return null;
+                          }
+                          const normalizedId = String(id);
+                          const isSelected = emailRecipients.includes(normalizedId);
+                          const profileLink = formatProfileHref(
+                            contact.profile_url ?? contact.profileUrl
+                          );
+                          const engagement = computeEngagementStatus(contact);
+                          const lastUpdatedDisplay = formatTimestamp(
+                            contact.last_updated ?? contact.updated_at ?? contact.updatedAt
+                          );
+                          const lastMessagedDisplay = formatTimestamp(
+                            contact.last_contacted ??
+                              contact.last_messaged ??
+                              contact.lastMessaged ??
+                              contact.last_contacted_at
+                          );
+                          return (
+                            <tr
+                              key={normalizedId}
+                              className={isSelected ? "selected" : ""}
+                              onClick={(event) => handleRecipientRowClick(event, normalizedId)}
+                            >
+                              <td className="select-cell">
+                                <button
+                                  type="button"
+                                  className={`select-toggle${isSelected ? " selected" : ""}`}
+                                  onClick={() => handleToggleRecipient(normalizedId)}
+                                  aria-pressed={isSelected}
+                                  aria-label={
+                                    isSelected
+                                      ? `Deselect contact ${contact.full_name ?? contact.fullName ?? normalizedId}`
+                                      : `Select contact ${contact.full_name ?? contact.fullName ?? normalizedId}`
+                                  }
+                                >
+                                  <span className="select-indicator" />
+                                </button>
+                              </td>
+                              <td>{normalizedId}</td>
+                              <td>{contact.full_name ?? contact.fullName ?? "—"}</td>
+                              <td>{contact.title ?? "—"}</td>
+                              <td>{contact.company ?? "—"}</td>
+                              <td>{contact.location ?? "—"}</td>
+                              <td>
+                                {profileLink ? (
+                                  <a href={profileLink} target="_blank" rel="noreferrer">
+                                    {contact.profile_url ?? contact.profileUrl}
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td>{contact.email ?? "—"}</td>
+                              <td>
+                                <div className="engagement-cell">
+                                  <span
+                                    className={`status-dot ${engagement.color}`}
+                                    title={
+                                      lastMessagedDisplay === "—"
+                                        ? engagement.label
+                                        : `${engagement.label} (${lastMessagedDisplay})`
+                                    }
+                                    aria-label={
+                                      lastMessagedDisplay === "—"
+                                        ? engagement.label
+                                        : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                    }
+                                  />
+                                  <span className="status-text">{engagement.label}</span>
+                                </div>
+                              </td>
+                              <td>{lastUpdatedDisplay}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="helper-text recipients-helper">
+                  {emailRecipients.length > 0
+                    ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
+                    : "No recipients selected."}
+                </div>
+              </div>
+
+              {aiResults.length > 0 && (
+                <div className="ai-results-panel">
+                  <div className="ai-results-header">
+                    <h3>AI Results</h3>
+                    <div className="ai-results-actions">
+                      <button
+                        type="button"
+                        className="button tertiary"
+                        onClick={() => handleDownloadResults("json")}
+                      >
+                        Download JSON
+                      </button>
+                      <button
+                        type="button"
+                        className="button tertiary"
+                        onClick={() => handleDownloadResults("csv")}
+                      >
+                        Download CSV
+                      </button>
+                    </div>
+                  </div>
+                  <div className="ai-results-list">
+                    {aiResults.map((result, index) => (
+                      <div
+                        key={result.id || index}
+                        className={`ai-result${result.excluded ? " excluded" : ""}`}
+                      >
+                        <div className="ai-result-header">
+                          <h4>Contact {index + 1}</h4>
+                          <div className="ai-result-buttons">
+                            <button
+                              type="button"
+                              className="button tertiary"
+                              onClick={() => handleToggleResultEdit(index)}
+                            >
+                              {result.isEditing ? "Done" : "Edit"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`button ghost${result.excluded ? " active" : ""}`}
+                              onClick={() => handleToggleResultExclude(index)}
+                            >
+                              {result.excluded ? "Include" : "Exclude"}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="ai-result-field">
+                          <span className="ai-result-label">To</span>
+                          {result.isEditing ? (
+                            <input
+                              className="text-input"
+                              value={result.to}
+                              onChange={(event) =>
+                                handleResultFieldChange(index, "to", event.target.value)
+                              }
+                            />
+                          ) : (
+                            <span className="ai-result-value">{result.to || "—"}</span>
+                          )}
+                        </div>
+                        <div className="ai-result-field">
+                          <span className="ai-result-label">Subject</span>
+                          {result.isEditing ? (
+                            <input
+                              className="text-input"
+                              value={result.subject}
+                              onChange={(event) =>
+                                handleResultFieldChange(index, "subject", event.target.value)
+                              }
+                            />
+                          ) : (
+                            <span className="ai-result-value">{result.subject || "—"}</span>
+                          )}
+                        </div>
+                        <div className="ai-result-field">
+                          <span className="ai-result-label">Body</span>
+                          {result.isEditing ? (
+                            <textarea
+                              className="text-area"
+                              value={result.body}
+                              onChange={(event) =>
+                                handleResultFieldChange(index, "body", event.target.value)
+                              }
+                              rows={6}
+                            />
+                          ) : (
+                            <pre className="ai-result-body-text">{result.body || ""}</pre>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
