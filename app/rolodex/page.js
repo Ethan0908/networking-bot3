@@ -89,6 +89,7 @@ const SAMPLE_CONTACT_RECORD = {
   contact_id: 1,
   local_id: 1,
   full_name: "John Doe",
+  name: "John Doe",
   title: "CEO",
   company: "Company",
   location: "New York City",
@@ -111,6 +112,10 @@ const DEFAULT_TEMPLATE = {
   to: ["{{contact.email}}"],
   subject: "",
   body: "",
+  role: "",
+  company: "",
+  studentName: "",
+  studentSchool: "",
 };
 const DEFAULT_PREVIEW_MESSAGE = "[AI will write this]";
 const DEFAULT_BATCH_SIZE = 10;
@@ -240,6 +245,24 @@ function resolveContactEmail(contact) {
     contact.primaryEmail ??
     ""
   );
+}
+
+function resolveContactName(contact) {
+  if (!contact || typeof contact !== "object") {
+    return "";
+  }
+  const inferred =
+    contact.full_name ??
+    contact.fullName ??
+    contact.name ??
+    [
+      contact.first_name ?? contact.firstName ?? "",
+      contact.last_name ?? contact.lastName ?? "",
+    ]
+      .map((value) => (value ? String(value) : ""))
+      .filter(Boolean)
+      .join(" ");
+  return inferred || "";
 }
 
 function IconInfo(props) {
@@ -392,6 +415,10 @@ export default function Rolodex() {
   const [previewContent, setPreviewContent] = useState(null);
   const [aiResults, setAiResults] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
+  const [campaignCompany, setCampaignCompany] = useState(DEFAULT_TEMPLATE.company);
+  const [studentName, setStudentName] = useState(DEFAULT_TEMPLATE.studentName);
+  const [studentSchool, setStudentSchool] = useState(DEFAULT_TEMPLATE.studentSchool);
   const validationTimers = useRef({});
   const selectAllRef = useRef(null);
   const subjectRef = useRef(null);
@@ -417,6 +444,10 @@ export default function Rolodex() {
           setToChips(storedTo.length > 0 ? storedTo : [...DEFAULT_TEMPLATE.to]);
           setSubject(parsed.subject ?? "");
           setEmailBody(parsed.body ?? "");
+          setCampaignRole(parsed.role ?? DEFAULT_TEMPLATE.role);
+          setCampaignCompany(parsed.company ?? DEFAULT_TEMPLATE.company);
+          setStudentName(parsed.studentName ?? DEFAULT_TEMPLATE.studentName);
+          setStudentSchool(parsed.studentSchool ?? DEFAULT_TEMPLATE.studentSchool);
         }
       }
     } catch (error) {
@@ -457,13 +488,17 @@ export default function Rolodex() {
       to: toChips,
       subject,
       body: emailBody,
+      role: campaignRole,
+      company: campaignCompany,
+      studentName,
+      studentSchool,
     };
     try {
       window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
       console.warn("Failed to persist template", error);
     }
-  }, [emailBody, subject, toChips]);
+  }, [campaignCompany, campaignRole, emailBody, studentName, studentSchool, subject, toChips]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -902,6 +937,10 @@ export default function Rolodex() {
       subject,
       body: emailBody,
       customPlaceholders,
+      role: campaignRole,
+      company: campaignCompany,
+      studentName,
+      studentSchool,
     };
     try {
       window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
@@ -910,12 +949,26 @@ export default function Rolodex() {
     } catch (error) {
       pushToast("error", "Unable to save the template.");
     }
-  }, [customPlaceholders, emailBody, pushToast, subject, toChips]);
+  }, [
+    campaignCompany,
+    campaignRole,
+    customPlaceholders,
+    emailBody,
+    pushToast,
+    studentName,
+    studentSchool,
+    subject,
+    toChips,
+  ]);
 
   const handleResetTemplate = useCallback(() => {
     setToChips([...DEFAULT_TEMPLATE.to]);
     setSubject(DEFAULT_TEMPLATE.subject);
     setEmailBody(DEFAULT_TEMPLATE.body);
+    setCampaignRole(DEFAULT_TEMPLATE.role);
+    setCampaignCompany(DEFAULT_TEMPLATE.company);
+    setStudentName(DEFAULT_TEMPLATE.studentName);
+    setStudentSchool(DEFAULT_TEMPLATE.studentSchool);
     setToInputValue("");
     setPreviewContent(null);
     pushToast("info", "Template cleared.");
@@ -1079,18 +1132,27 @@ export default function Rolodex() {
       return;
     }
     const contactEmail = resolveContactEmail(contactCandidate);
+    const contactName = resolveContactName(contactCandidate);
+    const normalizedContact = { ...contactCandidate };
+    if (contactName) {
+      if (!normalizedContact.name) {
+        normalizedContact.name = contactName;
+      }
+      if (!normalizedContact.full_name && !normalizedContact.fullName) {
+        normalizedContact.full_name = contactName;
+      }
+    }
     const previewTo = toChips
       .map((chip) => (chip === "{{contact.email}}" ? contactEmail || "[missing email]" : chip))
       .join(", ");
+    const studentContext = studentName || studentSchool
+      ? { name: studentName || null, school: studentSchool || null }
+      : null;
     const context = {
-      contact: contactCandidate,
-      company:
-        contactCandidate.company ??
-        contactCandidate.organization ??
-        contactCandidate.company_name ??
-        null,
-      role: contactCandidate.title ?? contactCandidate.role ?? null,
-      student: {},
+      contact: normalizedContact,
+      company: campaignCompany || null,
+      role: campaignRole || null,
+      student: studentContext,
     };
     const previewSubject = replaceTemplateTokens(subject, context, {
       preserveDraft: true,
@@ -1109,6 +1171,8 @@ export default function Rolodex() {
     });
     pushToast("info", "Preview updated.");
   }, [
+    campaignCompany,
+    campaignRole,
     contactsWithEmails,
     emailBody,
     emailContacts,
@@ -1116,6 +1180,8 @@ export default function Rolodex() {
     pushToast,
     resolveContactEmail,
     resolveContactId,
+    studentName,
+    studentSchool,
     subject,
     toChips,
   ]);
@@ -1144,17 +1210,37 @@ export default function Rolodex() {
       return;
     }
 
-    const contactsPayload = contactsWithEmails.map((contact) => ({ ...contact }));
+    const contactsPayload = contactsWithEmails.map((contact) => {
+      const normalized = { ...contact };
+      const name = resolveContactName(contact);
+      if (name) {
+        if (!normalized.name) {
+          normalized.name = name;
+        }
+        if (!normalized.full_name && !normalized.fullName) {
+          normalized.full_name = name;
+        }
+      }
+      const emailValue = resolveContactEmail(contact);
+      if (emailValue && !normalized.email) {
+        normalized.email = emailValue;
+      }
+      delete normalized.__contactId;
+      return normalized;
+    });
     const templatePayload = {
-      to: toChips.join(", "),
+      to: toChips,
       subject: trimmedSubject,
       body: trimmedBody,
       repeat: { over: "contacts", as: "contact" },
     };
+    const studentContext = studentName || studentSchool
+      ? { name: studentName || null, school: studentSchool || null }
+      : null;
     const dataset = {
-      student: null,
-      role: null,
-      company: null,
+      student: studentContext,
+      role: campaignRole || null,
+      company: campaignCompany || null,
       contacts: contactsPayload,
     };
     const options = {
@@ -1210,6 +1296,8 @@ export default function Rolodex() {
       setIsGenerating(false);
     }
   }, [
+    campaignCompany,
+    campaignRole,
     bodyMissingDraft,
     contactsWithEmails,
     emailBody,
@@ -1217,6 +1305,8 @@ export default function Rolodex() {
     hasValidToValue,
     invalidToChips,
     pushToast,
+    studentName,
+    studentSchool,
     subject,
     toChips,
   ]);
@@ -1856,10 +1946,213 @@ export default function Rolodex() {
             </div>
           )}
 
-                    {activePage === "email" && (
+          {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
+              <div className="recipients-block">
+                <div className="recipients-toolbar">
+                  <span id="recipient-label" className="recipients-title">
+                    Contacts
+                  </span>
+                  <div className="recipient-controls">
+                    <button
+                      type="button"
+                      className="button tertiary load-contacts-button"
+                      onClick={handleLoadEmailContacts}
+                      disabled={loadingContacts}
+                      aria-busy={loadingContacts}
+                    >
+                      {loadingContacts ? <IconLoader /> : null}
+                      {loadingContacts ? "Loading…" : "Load Contacts"}
+                    </button>
+                  </div>
+                </div>
+                {emailContacts.length === 0 ? (
+                  <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                ) : (
+                  <div
+                    className="table-scroll recipient-table-scroll"
+                    role="group"
+                    aria-labelledby="recipient-label"
+                  >
+                    <table className="view-table recipient-table">
+                      {isSampleEmailContacts && (
+                        <caption className="view-table-caption">
+                          Sample contact shown. Load a contact to see live data.
+                        </caption>
+                      )}
+                      <thead>
+                        <tr>
+                          <th scope="col" className="select-header">
+                            <label className="select-all-control">
+                              <span className="select-all-label">Select all</span>
+                              <input
+                                ref={selectAllRef}
+                                type="checkbox"
+                                onChange={handleToggleSelectAll}
+                                checked={allRecipientsSelected}
+                                disabled={allRecipientIds.length === 0}
+                                aria-label="Select all recipients"
+                              />
+                            </label>
+                          </th>
+                          <th scope="col">Contact ID</th>
+                          <th scope="col">Full Name</th>
+                          <th scope="col">Title</th>
+                          <th scope="col">Company</th>
+                          <th scope="col">Location</th>
+                          <th scope="col">Profile URL</th>
+                          <th scope="col">Email</th>
+                          <th scope="col">Engagement</th>
+                          <th scope="col">Last Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailContacts.map((contact) => {
+                          const id = contact.__contactId || resolveContactId(contact);
+                          if (!id) {
+                            return null;
+                          }
+                          const normalizedId = String(id);
+                          const isSelected = emailRecipients.includes(normalizedId);
+                          const profileLink = formatProfileHref(
+                            contact.profile_url ?? contact.profileUrl
+                          );
+                          const engagement = computeEngagementStatus(contact);
+                          const lastUpdatedDisplay = formatTimestamp(
+                            contact.last_updated ?? contact.updated_at ?? contact.updatedAt
+                          );
+                          const lastMessagedDisplay = formatTimestamp(
+                            contact.last_contacted ??
+                              contact.last_messaged ??
+                              contact.lastMessaged ??
+                              contact.last_contacted_at
+                          );
+                          const contactName = resolveContactName(contact) || normalizedId;
+                          return (
+                            <tr
+                              key={normalizedId}
+                              className={isSelected ? "selected" : ""}
+                              onClick={(event) => handleRecipientRowClick(event, normalizedId)}
+                            >
+                              <td className="select-cell">
+                                <button
+                                  type="button"
+                                  className={`select-toggle${isSelected ? " selected" : ""}`}
+                                  onClick={() => handleToggleRecipient(normalizedId)}
+                                  aria-pressed={isSelected}
+                                  aria-label={
+                                    isSelected
+                                      ? `Deselect contact ${contactName}`
+                                      : `Select contact ${contactName}`
+                                  }
+                                >
+                                  <span className="select-indicator" />
+                                </button>
+                              </td>
+                              <td>{normalizedId}</td>
+                              <td>{resolveContactName(contact) || "—"}</td>
+                              <td>{contact.title ?? "—"}</td>
+                              <td>{contact.company ?? "—"}</td>
+                              <td>{contact.location ?? "—"}</td>
+                              <td>
+                                {profileLink ? (
+                                  <a href={profileLink} target="_blank" rel="noreferrer">
+                                    {contact.profile_url ?? contact.profileUrl}
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td>{contact.email ?? "—"}</td>
+                              <td>
+                                <div className="engagement-cell">
+                                  <span
+                                    className={`status-dot ${engagement.color}`}
+                                    title={
+                                      lastMessagedDisplay === "—"
+                                        ? engagement.label
+                                        : `${engagement.label} (${lastMessagedDisplay})`
+                                    }
+                                    aria-label={
+                                      lastMessagedDisplay === "—"
+                                        ? engagement.label
+                                        : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                    }
+                                  />
+                                  <span className="status-text">{engagement.label}</span>
+                                </div>
+                              </td>
+                              <td>{lastUpdatedDisplay}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="helper-text recipients-helper">
+                  {emailRecipients.length > 0
+                    ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
+                    : "No recipients selected."}
+                </div>
+              </div>
+
               <div className="email-composer-card">
                 <div className="ai-style-badge">AI writes in Canadian English.</div>
+                <div className="composer-context">
+                  <div className="field">
+                    <label className="field-label" htmlFor="campaignRole">
+                      Target role
+                    </label>
+                    <input
+                      id="campaignRole"
+                      className="text-input"
+                      value={campaignRole}
+                      onChange={(event) => setCampaignRole(event.target.value)}
+                      placeholder="e.g. Product Manager"
+                    />
+                    <div className="helper-text">Used for {"{{role}}"}.</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="campaignCompany">
+                      Target company
+                    </label>
+                    <input
+                      id="campaignCompany"
+                      className="text-input"
+                      value={campaignCompany}
+                      onChange={(event) => setCampaignCompany(event.target.value)}
+                      placeholder="e.g. Figma"
+                    />
+                    <div className="helper-text">Used for {"{{company}}"}.</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="studentNameInput">
+                      Your name
+                    </label>
+                    <input
+                      id="studentNameInput"
+                      className="text-input"
+                      value={studentName}
+                      onChange={(event) => setStudentName(event.target.value)}
+                      placeholder="e.g. Alex Chen"
+                    />
+                    <div className="helper-text">Used for {"{{student.name}}"}.</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="studentSchoolInput">
+                      Your school
+                    </label>
+                    <input
+                      id="studentSchoolInput"
+                      className="text-input"
+                      value={studentSchool}
+                      onChange={(event) => setStudentSchool(event.target.value)}
+                      placeholder="e.g. University of Toronto"
+                    />
+                    <div className="helper-text">Used for {"{{student.school}}"}.</div>
+                  </div>
+                </div>
                 <div className={`field${toErrorMessage ? " error" : ""}`}>
                   <label
                     className="field-label"
@@ -1998,7 +2291,7 @@ export default function Rolodex() {
                             if (!id) {
                               return null;
                             }
-                            const name = contact.full_name ?? contact.fullName ?? "Unknown contact";
+                            const name = resolveContactName(contact) || "Unknown contact";
                             const emailValue = resolveContactEmail(contact);
                             const label = emailValue ? `${name} (${emailValue})` : name;
                             return (
@@ -2037,7 +2330,7 @@ export default function Rolodex() {
                       <h3>Preview</h3>
                       {previewContact ? (
                         <span className="preview-contact-name">
-                          {previewContact.full_name ?? previewContact.fullName ?? ""}
+                          {resolveContactName(previewContact)}
                         </span>
                       ) : null}
                     </div>
@@ -2054,157 +2347,6 @@ export default function Rolodex() {
                     <pre className="preview-body">{previewContent.body || ""}</pre>
                   </div>
                 )}
-              </div>
-
-              <div className="recipients-block">
-                <div className="recipients-toolbar">
-                  <span id="recipient-label" className="recipients-title">
-                    Contacts
-                  </span>
-                  <div className="recipient-controls">
-                    <button
-                      type="button"
-                      className="button tertiary load-contacts-button"
-                      onClick={handleLoadEmailContacts}
-                      disabled={loadingContacts}
-                      aria-busy={loadingContacts}
-                    >
-                      {loadingContacts ? <IconLoader /> : null}
-                      {loadingContacts ? "Loading…" : "Load Contacts"}
-                    </button>
-                  </div>
-                </div>
-                {emailContacts.length === 0 ? (
-                  <p className="recipient-placeholder">Load contacts to choose recipients.</p>
-                ) : (
-                  <div
-                    className="table-scroll recipient-table-scroll"
-                    role="group"
-                    aria-labelledby="recipient-label"
-                  >
-                    <table className="view-table recipient-table">
-                      {isSampleEmailContacts && (
-                        <caption className="view-table-caption">
-                          Sample contact shown. Load a contact to see live data.
-                        </caption>
-                      )}
-                      <thead>
-                        <tr>
-                          <th scope="col" className="select-header">
-                            <div className="select-header-content">
-                              <span className="select-header-label">Select</span>
-                              <label className="select-all-control">
-                                <input
-                                  ref={selectAllRef}
-                                  type="checkbox"
-                                  onChange={handleToggleSelectAll}
-                                  checked={allRecipientsSelected}
-                                  disabled={allRecipientIds.length === 0}
-                                  aria-label="Select all recipients"
-                                />
-                                <span>Select all</span>
-                              </label>
-                            </div>
-                          </th>
-                          <th scope="col">Contact ID</th>
-                          <th scope="col">Full Name</th>
-                          <th scope="col">Title</th>
-                          <th scope="col">Company</th>
-                          <th scope="col">Location</th>
-                          <th scope="col">Profile URL</th>
-                          <th scope="col">Email</th>
-                          <th scope="col">Engagement</th>
-                          <th scope="col">Last Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {emailContacts.map((contact) => {
-                          const id = contact.__contactId || resolveContactId(contact);
-                          if (!id) {
-                            return null;
-                          }
-                          const normalizedId = String(id);
-                          const isSelected = emailRecipients.includes(normalizedId);
-                          const profileLink = formatProfileHref(
-                            contact.profile_url ?? contact.profileUrl
-                          );
-                          const engagement = computeEngagementStatus(contact);
-                          const lastUpdatedDisplay = formatTimestamp(
-                            contact.last_updated ?? contact.updated_at ?? contact.updatedAt
-                          );
-                          const lastMessagedDisplay = formatTimestamp(
-                            contact.last_contacted ??
-                              contact.last_messaged ??
-                              contact.lastMessaged ??
-                              contact.last_contacted_at
-                          );
-                          return (
-                            <tr
-                              key={normalizedId}
-                              className={isSelected ? "selected" : ""}
-                              onClick={(event) => handleRecipientRowClick(event, normalizedId)}
-                            >
-                              <td className="select-cell">
-                                <button
-                                  type="button"
-                                  className={`select-toggle${isSelected ? " selected" : ""}`}
-                                  onClick={() => handleToggleRecipient(normalizedId)}
-                                  aria-pressed={isSelected}
-                                  aria-label={
-                                    isSelected
-                                      ? `Deselect contact ${contact.full_name ?? contact.fullName ?? normalizedId}`
-                                      : `Select contact ${contact.full_name ?? contact.fullName ?? normalizedId}`
-                                  }
-                                >
-                                  <span className="select-indicator" />
-                                </button>
-                              </td>
-                              <td>{normalizedId}</td>
-                              <td>{contact.full_name ?? contact.fullName ?? "—"}</td>
-                              <td>{contact.title ?? "—"}</td>
-                              <td>{contact.company ?? "—"}</td>
-                              <td>{contact.location ?? "—"}</td>
-                              <td>
-                                {profileLink ? (
-                                  <a href={profileLink} target="_blank" rel="noreferrer">
-                                    {contact.profile_url ?? contact.profileUrl}
-                                  </a>
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                              <td>{contact.email ?? "—"}</td>
-                              <td>
-                                <div className="engagement-cell">
-                                  <span
-                                    className={`status-dot ${engagement.color}`}
-                                    title={
-                                      lastMessagedDisplay === "—"
-                                        ? engagement.label
-                                        : `${engagement.label} (${lastMessagedDisplay})`
-                                    }
-                                    aria-label={
-                                      lastMessagedDisplay === "—"
-                                        ? engagement.label
-                                        : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
-                                    }
-                                  />
-                                  <span className="status-text">{engagement.label}</span>
-                                </div>
-                              </td>
-                              <td>{lastUpdatedDisplay}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <div className="helper-text recipients-helper">
-                  {emailRecipients.length > 0
-                    ? `${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"} selected.`
-                    : "No recipients selected."}
-                </div>
               </div>
 
               {aiResults.length > 0 && (

@@ -375,11 +375,15 @@ html.theme-dark {
 .select-all-control {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   font-size: 0.82rem;
   font-weight: 500;
   color: var(--text-secondary);
   user-select: none;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background: var(--surface-subtle);
 }
 
 .select-all-control input {
@@ -388,8 +392,9 @@ html.theme-dark {
   cursor: pointer;
 }
 
-.select-all-control span {
-  color: var(--text-secondary);
+.select-all-label {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .load-contacts-button {
@@ -411,34 +416,21 @@ html.theme-dark {
 }
 
 .recipient-table .select-header {
-  width: 140px;
+  width: 110px;
   text-align: center;
   color: var(--text-secondary);
 }
 
-.select-header-content {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  white-space: nowrap;
-}
-
-.select-header-label {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .recipient-table .select-cell {
   text-align: center;
-  padding-left: 12px;
-  padding-right: 12px;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .select-toggle {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: var(--input-background);
   display: inline-flex;
@@ -456,8 +448,8 @@ html.theme-dark {
 }
 
 .select-toggle .select-indicator {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: transparent;
   border: 2px solid rgba(148, 163, 184, 0.6);
@@ -497,6 +489,12 @@ html.theme-dark {
   border-radius: 18px;
   background: var(--surface-background);
   box-shadow: var(--shadow-inner);
+}
+
+.composer-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
 }
 
 .ai-style-badge {
