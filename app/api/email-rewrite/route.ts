@@ -158,6 +158,37 @@ export async function POST(req: NextRequest) {
     options: options ? { ...options } : {},
   } as Record<string, unknown>;
 
+  const coerceRecord = (value: unknown) => {
+    if (!value) return {};
+    if (typeof value === "string") {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return { raw: value };
+      }
+    }
+    if (typeof value === "object") {
+      return { ...(value as Record<string, unknown>) };
+    }
+    return { value };
+  };
+
+  payload.template = coerceRecord(payload.template);
+  payload.dataset = coerceRecord(payload.dataset);
+  payload.options = coerceRecord(payload.options);
+
+  if (payload.template && typeof payload.template === "object") {
+    const toField = (payload.template as any).to;
+    if (Array.isArray(toField)) {
+      (payload.template as any).to = toField
+        .filter((value) => value != null && value !== "")
+        .map((value) => String(value))
+        .join(", ");
+    } else if (toField != null && typeof toField !== "string") {
+      (payload.template as any).to = String(toField);
+    }
+  }
+
   if (typeof (payload.template as any)?.body === "string") {
     (payload.template as any).rewriteSource = (payload.template as any).body;
   }

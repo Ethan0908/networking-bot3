@@ -1240,8 +1240,13 @@ export default function Rolodex() {
       delete normalized.__contactId;
       return normalized;
     });
+    const serialisedTo = Array.isArray(toChips)
+      ? toChips.filter((item) => item && typeof item === "string").join(", ")
+      : typeof toChips === "string"
+      ? toChips
+      : "";
     const templatePayload = {
-      to: toChips,
+      to: serialisedTo,
       subject: trimmedSubject,
       body: trimmedBody,
       repeat: { over: "contacts", as: "contact" },
