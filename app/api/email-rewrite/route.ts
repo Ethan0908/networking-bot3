@@ -14,6 +14,7 @@ type SessionLike = (Awaited<ReturnType<typeof getServerSession>> & {
 }) | null;
 
 type RewriteRequestBody = {
+  action?: unknown;
   template?: Record<string, unknown> | null;
   dataset?: Record<string, unknown> | null;
   options?: Record<string, unknown> | null;
@@ -148,10 +149,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
-  const { template, dataset, options }: RewriteRequestBody = await req.json();
+  const { action, template, dataset, options }: RewriteRequestBody = await req.json();
 
   const payload = {
-    action: "email",
+    action: typeof action === "string" && action.trim() ? action.trim() : "email",
     template: template ? { ...template } : {},
     dataset: dataset ? { ...dataset } : {},
     options: options ? { ...options } : {},

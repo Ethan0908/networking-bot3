@@ -1268,6 +1268,7 @@ export default function Rolodex() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "email",
           template: { ...templatePayload, rewriteGuide },
           dataset: { ...dataset, rewriteGuide },
           options,
