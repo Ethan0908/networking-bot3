@@ -1,5 +1,5 @@
 "use client";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./rolodex.css";
 
@@ -389,6 +389,7 @@ function IconAlert(props) {
 }
 
 export default function Rolodex() {
+  const { data: authSession, status: authStatus } = useSession();
   const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -403,7 +404,11 @@ export default function Rolodex() {
   const [inlineSummary, setInlineSummary] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState(null);
-  const [gmailStatus, setGmailStatus] = useState("disconnected");
+  const [gmailStatus, setGmailStatus] = useState(() =>
+    authStatus === "authenticated" && authSession?.user
+      ? "connected"
+      : "disconnected"
+  );
   const [toasts, setToasts] = useState([]);
   const [activePage, setActivePage] = useState("create");
   const [lastAction, setLastAction] = useState(null);
@@ -530,6 +535,33 @@ export default function Rolodex() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, TOAST_TIMEOUT);
   }, []);
+
+  useEffect(() => {
+    if (authStatus === "loading") {
+      return;
+    }
+    const hasSession = Boolean(authSession?.user);
+    const nextStatus = hasSession ? "connected" : "disconnected";
+    if (gmailStatus === "connecting" && !hasSession) {
+      return;
+    }
+    if (gmailStatus === nextStatus) {
+      return;
+    }
+    if (nextStatus === "connected") {
+      setGmailStatus("connected");
+      if (gmailStatus !== "connected") {
+        pushToast("success", "Gmail connected.");
+      }
+    } else {
+      setGmailStatus("disconnected");
+      if (gmailStatus === "connected") {
+        pushToast("info", "Gmail disconnected.");
+      } else if (gmailStatus === "connecting") {
+        pushToast("error", "Unable to connect Gmail.");
+      }
+    }
+  }, [authSession, authStatus, gmailStatus, pushToast]);
 
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
@@ -690,12 +722,19 @@ export default function Rolodex() {
     if (gmailStatus === "connecting") return;
     setGmailStatus("connecting");
     try {
-      const result = await signIn("google", { redirect: false });
+      const result = await signIn("google", {
+        redirect: false,
+        callbackUrl:
+          typeof window !== "undefined" ? window.location.href : undefined,
+      });
       if (result?.error) {
         throw new Error(result.error);
       }
-      setGmailStatus("connected");
-      pushToast("success", "Gmail connected.");
+      if (result?.url) {
+        window.location.assign(result.url);
+        return;
+      }
+      throw new Error("No redirect URL returned.");
     } catch (error) {
       console.error("Failed to start Google sign-in", error);
       setGmailStatus("disconnected");
@@ -1586,17 +1625,6 @@ export default function Rolodex() {
     () => (theme === "dark" ? "Switch to light mode" : "Switch to dark mode"),
     [theme]
   );
-
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible" && gmailStatus === "connecting") {
-        setGmailStatus("connected");
-        pushToast("success", "Gmail connected.");
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [gmailStatus, pushToast]);
 
   const contactDetailFields = (
     <>
