@@ -1,5 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { saveUserTokens, clearUserTokens } from "./tokenStore";
 
 const scopes = [
   "openid",
@@ -23,23 +24,46 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-  async jwt({ token, account }) {
-    if (account) {
-      (token as any).access_token = account.access_token;
-      (token as any).refresh_token = account.refresh_token ?? (token as any).refresh_token;
-
-      // coerce to number safely
-      const expiresInSec = Number(account.expires_in ?? 3600);
-      (token as any).expires_at = Date.now() + expiresInSec * 1000;
-    }
-    return token;
+    async jwt({ token, account, user, trigger }) {
+      const email = (user?.email || (token as any)?.email || account?.providerAccountId) ?? null;
+      if (user?.email) {
+        (token as any).email = user.email;
+      }
+      if (account && email) {
+        let expiresAt = Date.now() + 3600 * 1000;
+        if (account.expires_in != null) {
+          const expiresInSec = Number(account.expires_in);
+          if (!Number.isNaN(expiresInSec)) {
+            expiresAt = Date.now() + expiresInSec * 1000;
+          }
+        } else if (account.expires_at != null) {
+          const epochSeconds = Number(account.expires_at);
+          if (!Number.isNaN(epochSeconds)) {
+            expiresAt = epochSeconds * 1000;
+          }
+        }
+        saveUserTokens(String(email), {
+          accessToken: account.access_token ?? null,
+          refreshToken: account.refresh_token ?? null,
+          expiresAt,
+        });
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && (token as any)?.email) {
+        session.user.email = String((token as any).email);
+      }
+      return session;
+    },
   },
-  async session({ session, token }) {
-    (session as any).access_token = (token as any).access_token;
-    (session as any).refresh_token = (token as any).refresh_token;
-    (session as any).expires_at = (token as any).expires_at;
-    return session;
-  },
-},
   secret: process.env.AUTH_SECRET,
+  events: {
+    async signOut({ token }) {
+      const email = (token as any)?.email;
+      if (email) {
+        clearUserTokens(String(email));
+      }
+    },
+  },
 };

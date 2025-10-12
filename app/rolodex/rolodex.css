@@ -772,6 +772,17 @@ html.theme-dark {
   font-weight: 600;
 }
 
+.ai-send-summary {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .ai-stream-error {
   display: flex;
   align-items: center;
@@ -781,21 +792,6 @@ html.theme-dark {
   background: var(--danger-surface);
   color: var(--danger);
   font-size: 0.85rem;
-}
-
-.ai-stream-error button {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.ai-stream-error button:hover,
-.ai-stream-error button:focus {
-  text-decoration: underline;
 }
 
 .ai-results-list {

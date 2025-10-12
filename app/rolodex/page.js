@@ -20,6 +20,8 @@ const TOAST_TIMEOUT = 4500;
 
 const DEFAULT_PREVIEW_MESSAGE = "[AI will write this]";
 const DEFAULT_BATCH_SIZE = 10;
+const JOB_POLL_INTERVAL = 4000;
+const EMAIL_JOBS_ENABLED = process.env.NEXT_PUBLIC_USE_EMAIL_JOBS !== "false";
 
 function buildRewriteGuide(body) {
   if (!body) return "";
@@ -181,59 +183,6 @@ function normaliseRecipientList(value) {
   return String(value);
 }
 
-function mergeCounts(previous, update, type, fallbackTotal = 0) {
-  const base = {
-    total:
-      previous && typeof previous.total === "number"
-        ? previous.total
-        : !Number.isNaN(Number(fallbackTotal))
-        ? Number(fallbackTotal)
-        : 0,
-    sent: previous?.sent ?? 0,
-    failed: previous?.failed ?? 0,
-  };
-
-  if (update && typeof update === "object") {
-    if (Object.prototype.hasOwnProperty.call(update, "total")) {
-      const nextTotal = Number(update.total);
-      if (!Number.isNaN(nextTotal)) {
-        base.total = nextTotal;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(update, "sent")) {
-      const nextSent = Number(update.sent);
-      if (!Number.isNaN(nextSent)) {
-        base.sent = nextSent;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(update, "failed")) {
-      const nextFailed = Number(update.failed);
-      if (!Number.isNaN(nextFailed)) {
-        base.failed = nextFailed;
-      }
-    }
-  } else if (!update) {
-    if (type === "sent") {
-      base.sent += 1;
-    } else if (type === "failed") {
-      base.failed += 1;
-    }
-  }
-
-  if (fallbackTotal && base.total < fallbackTotal) {
-    base.total = Number(fallbackTotal);
-  }
-
-  const delivered = base.sent + base.failed;
-  if (base.total < delivered) {
-    base.total = delivered;
-  }
-
-  return base;
-}
-
-const SENDER_EVENTS_BASE = (process.env.NEXT_PUBLIC_SENDER_BASE_URL || "").trim();
-
 function ToastStack({ toasts, onDismiss }) {
   return (
     <div className="toast-stack" role="status" aria-live="polite">
@@ -292,16 +241,14 @@ export default function Rolodex() {
   const [previewContent, setPreviewContent] = useState(null);
   const [aiResults, setAiResults] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [rewriteJobState, setRewriteJobState] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
   const [activeJobId, setActiveJobId] = useState("");
-  const [streamError, setStreamError] = useState(null);
-  const [streamRevision, setStreamRevision] = useState(0);
+  const [isSendingBatch, setIsSendingBatch] = useState(false);
   const validationTimers = useRef({});
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
-  const eventSourceRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);
-  const reconnectTimerRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -311,16 +258,11 @@ export default function Rolodex() {
     }, TOAST_TIMEOUT);
   }, []);
 
-  const closeEventStream = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    reconnectAttemptsRef.current = 0;
   }, []);
 
   const {
@@ -356,10 +298,12 @@ export default function Rolodex() {
   } = useEmailTemplate({ pushToast, subjectRef, bodyRef });
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      closeEventStream();
+      isMountedRef.current = false;
+      stopPolling();
     };
-  }, [closeEventStream]);
+  }, [stopPolling]);
 
   useEffect(() => {
     if (authStatus === "loading") {
@@ -776,316 +720,147 @@ export default function Rolodex() {
   ]);
 
   
-  const handleStreamEvent = useCallback(
-    (jobId, payload) => {
-      if (!payload || typeof payload !== "object") {
+
+  const mergeJobMessages = useCallback(
+    (jobId, messages) => {
+      if (!Array.isArray(messages)) {
         return;
       }
-
-      const type = typeof payload.type === "string" ? payload.type : "message";
-      const countsPayload =
-        payload && typeof payload === "object"
-          ? payload.counts && typeof payload.counts === "object"
-            ? payload.counts
-            : type === "batch_done"
-            ? {
-                total: payload.total,
-                sent: payload.sent,
-                failed: payload.failed,
-              }
-            : undefined
-          : undefined;
-
-      if (
-        type === "progress" &&
-        payload.meta &&
-        Array.isArray(payload.meta.emails)
-      ) {
-        const emails = payload.meta.emails;
-        setAiResults((prev) => {
-          if (prev.length > 0) {
-            return prev;
-          }
-          return emails.map((item, index) => {
-            const toValue = normaliseRecipientList(item?.to);
+      setAiResults((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) {
+          return messages.map((message, index) => ({
+            id: `${jobId}-${index}`,
+            to: message?.to ?? "",
+            subject: message?.subject ?? "",
+            body: message?.body ?? "",
+            excluded: false,
+            isEditing: false,
+            status: message?.status ?? "drafted",
+            error: message?.error ?? "",
+          }));
+        }
+        return messages.map((message, index) => {
+          const existing = prev[index];
+          const nextBase = {
+            id: `${jobId}-${index}`,
+            to: message?.to ?? "",
+            subject: message?.subject ?? "",
+            body: message?.body ?? "",
+            status: message?.status ?? (existing?.status ?? "drafted"),
+            error: message?.error ?? (existing?.error ?? ""),
+          };
+          if (!existing) {
             return {
-              id: item?.id ? String(item.id) : `${index}-${toValue}`,
-              to: toValue,
-              subject: item?.subject ?? "",
-              body: item?.body ?? "",
+              ...nextBase,
               excluded: false,
               isEditing: false,
-              status: "drafted",
-              error: "",
             };
-          });
-        });
-      }
-
-      if (type === "sent" || type === "failed") {
-        let shouldNotifyFailure = false;
-        const toValue = normaliseRecipientList(
-          payload.to ?? payload.recipient ?? ""
-        );
-        const subjectValue =
-          payload.subject ?? payload.meta?.subject ?? "";
-        const bodyValue = payload.body ?? payload.meta?.body ?? "";
-        const status = type === "sent" ? "sent" : "failed";
-        const errorText =
-          type === "failed"
-            ? String(payload.error ?? payload.meta?.error ?? "")
-            : "";
-        const identifier = payload.id
-          ? String(payload.id)
-          : toValue || `result-${Date.now()}`;
-
-        setAiResults((prev) => {
-          const next = [...prev];
-          const index = next.findIndex(
-            (item) =>
-              (identifier && item.id === identifier) ||
-              (!!toValue && item.to === toValue)
-          );
-          const previous = index >= 0 ? next[index] : null;
-          if (
-            type === "failed" &&
-            errorText &&
-            (!previous || previous.status !== "failed")
-          ) {
-            shouldNotifyFailure = true;
           }
-          const updated = {
-            ...(previous ?? { excluded: false, isEditing: false }),
-            id: identifier,
-            to: toValue || previous?.to || "",
-            subject: subjectValue || previous?.subject || "",
-            body: bodyValue || previous?.body || "",
-            status,
-            error: errorText,
+          const isEditing = Boolean(existing.isEditing);
+          return {
+            ...existing,
+            id: nextBase.id,
+            to: isEditing ? existing.to : nextBase.to,
+            subject: isEditing ? existing.subject : nextBase.subject,
+            body: isEditing ? existing.body : nextBase.body,
+            status: nextBase.status,
+            error: nextBase.error,
           };
-          if (index >= 0) {
-            next[index] = updated;
-            return next;
-          }
-          return [
-            ...next,
-            {
-              ...updated,
-              excluded: updated.excluded ?? false,
-              isEditing: updated.isEditing ?? false,
-            },
-          ];
         });
-
-        if (shouldNotifyFailure) {
-          pushToast(
-            "error",
-            `Failed to send to ${toValue || "recipient"}.`
-          );
-        }
-      }
-
-      let completedAlready = false;
-
-      setRewriteJobState((prev) => {
-        const totalFromCounts =
-          countsPayload && typeof countsPayload.total === "number"
-            ? Number(countsPayload.total)
-            : undefined;
-        if (!prev || prev.id !== jobId) {
-          if (type === "batch_done") {
-            const fallbackTotal =
-              prev?.expectedTotal ?? totalFromCounts ?? 0;
-            return {
-              id: jobId,
-              expectedTotal: fallbackTotal,
-              stage: "completed",
-              detail:
-                typeof payload.detail === "string"
-                  ? payload.detail
-                  : prev?.detail ?? "Delivery finished.",
-              counts: mergeCounts(
-                prev?.counts ?? null,
-                countsPayload,
-                type,
-                fallbackTotal
-              ),
-              completed: true,
-              lastUpdate: payload.ts ?? Date.now(),
-            };
-          }
-          return prev;
-        }
-
-        if (type === "batch_done" && prev.completed) {
-          completedAlready = true;
-          return prev;
-        }
-
-        const fallbackTotal =
-          totalFromCounts != null ? totalFromCounts : prev.expectedTotal ?? 0;
-        const nextCounts = mergeCounts(
-          prev.counts ?? null,
-          countsPayload,
-          type,
-          fallbackTotal
-        );
-
-        const stage =
-          type === "progress" && typeof payload.stage === "string"
-            ? payload.stage
-            : prev.stage;
-        const detail =
-          type === "progress" && typeof payload.detail === "string"
-            ? payload.detail
-            : prev.detail;
-
-        return {
-          ...prev,
-          expectedTotal:
-            totalFromCounts != null ? totalFromCounts : prev.expectedTotal,
-          stage,
-          detail,
-          counts: nextCounts,
-          completed: type === "batch_done" ? true : prev.completed,
-          lastUpdate: payload.ts ?? Date.now(),
-        };
       });
+    },
+    []
+  );
 
-      if (type === "batch_done") {
-        if (completedAlready) {
-          return;
+  const refreshJobStatus = useCallback(
+    async (jobId, { silent = false } = {}) => {
+      try {
+        const response = await fetch(`/api/email-jobs/${jobId}`);
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || "Unable to load job status.");
         }
+        const data = await response.json();
+        setJobStatus({
+          id: jobId,
+          status: data.status ?? "queued",
+          stage: data.stage ?? null,
+          detail: data.detail ?? null,
+          progress: data.progress ?? null,
+          previews: Array.isArray(data.previews) ? data.previews : [],
+          error: data.error ?? null,
+          sendSummary: data.sendSummary ?? { sent: 0, failed: 0 },
+        });
+        if (Array.isArray(data.messages)) {
+          mergeJobMessages(jobId, data.messages);
+        }
+        if (data.status === "ready") {
+          setIsGenerating(false);
+          setActiveJobId("");
+          if (!silent) {
+            pushToast("success", "Drafts are ready.");
+          }
+          return "stop";
+        }
+        if (data.status === "error") {
+          setIsGenerating(false);
+          setActiveJobId("");
+          const message =
+            data.error && typeof data.error === "string"
+              ? data.error
+              : "Rewrite job failed.";
+          if (!silent) {
+            pushToast("error", message);
+          }
+          return "stop";
+        }
+        return "continue";
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to load job status.";
         setIsGenerating(false);
-        closeEventStream();
         setActiveJobId("");
-        setStreamError(null);
-
-        const sentCount =
-          typeof payload.sent === "number"
-            ? payload.sent
-            : countsPayload && typeof countsPayload.sent === "number"
-            ? Number(countsPayload.sent)
-            : undefined;
-        const failedCount =
-          typeof payload.failed === "number"
-            ? payload.failed
-            : countsPayload && typeof countsPayload.failed === "number"
-            ? Number(countsPayload.failed)
-            : undefined;
-
-        if (sentCount != null) {
-          pushToast(
-            "success",
-            `Sent ${sentCount} email${sentCount === 1 ? "" : "s"}.`
-          );
-        } else {
-          pushToast("success", "Rewrite job completed.");
+        setJobStatus((prev) =>
+          prev ? { ...prev, status: "error", error: message } : prev
+        );
+        if (!silent) {
+          pushToast("error", message);
         }
-        if (failedCount) {
-          pushToast(
-            "error",
-            `${failedCount} email${failedCount === 1 ? "" : "s"} failed to send.`
-          );
-        }
+        return "stop";
       }
     },
-    [closeEventStream, pushToast]
+    [mergeJobMessages, pushToast]
   );
 
   useEffect(() => {
+    if (!EMAIL_JOBS_ENABLED) {
+      return;
+    }
     if (!activeJobId) {
+      stopPolling();
       return;
     }
-    if (typeof window === "undefined" || typeof EventSource === "undefined") {
-      setStreamError("Live progress updates are not supported in this environment.");
-      return;
-    }
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
+    let cancelled = false;
 
-    let eventsUrl;
-    try {
-      const base = SENDER_EVENTS_BASE || window.location.origin;
-      eventsUrl = new URL("/events", base);
-    } catch (error) {
-      console.error("Invalid events URL", error);
-      setStreamError("Unable to connect to the progress stream.");
-      return;
-    }
-
-    eventsUrl.searchParams.set("jobId", activeJobId);
-
-    const source = new EventSource(eventsUrl.toString());
-    eventSourceRef.current = source;
-    reconnectAttemptsRef.current = 0;
-    setStreamError(null);
-    setRewriteJobState((prev) =>
-      prev && prev.id === activeJobId
-        ? {
-            ...prev,
-            stage: prev.stage || "connecting",
-            detail: prev.detail || "Waiting for updates…",
-            lastUpdate: Date.now(),
-          }
-        : prev
-    );
-
-    source.onmessage = (event) => {
-      reconnectAttemptsRef.current = 0;
-      if (!event.data) {
-        return;
-      }
-      try {
-        const payload = JSON.parse(event.data);
-        handleStreamEvent(activeJobId, payload);
-        setStreamError(null);
-      } catch (error) {
-        console.warn("Unable to parse progress event", error);
+    const poll = async () => {
+      if (cancelled) return;
+      const outcome = await refreshJobStatus(activeJobId);
+      if (cancelled) return;
+      if (outcome === "continue") {
+        pollTimerRef.current = window.setTimeout(poll, JOB_POLL_INTERVAL);
+      } else {
+        stopPolling();
       }
     };
 
-    source.onerror = () => {
-      source.close();
-      if (!activeJobId) {
-        return;
-      }
-      const attempt = reconnectAttemptsRef.current + 1;
-      reconnectAttemptsRef.current = attempt;
-      if (attempt > 5) {
-        setStreamError("Live updates disconnected. Retry to restore the stream.");
-        pushToast(
-          "error",
-          "Lost connection to the rewrite progress stream."
-        );
-        return;
-      }
-      const delay = Math.min(30000, 1000 * 2 ** (attempt - 1));
-      setStreamError(`Connection lost. Retrying in ${Math.round(delay / 1000)}s…`);
-      reconnectTimerRef.current = window.setTimeout(() => {
-        setStreamRevision((prev) => prev + 1);
-      }, delay);
-    };
+    stopPolling();
+    poll();
 
     return () => {
-      source.close();
-      if (eventSourceRef.current === source) {
-        eventSourceRef.current = null;
-      }
+      cancelled = true;
+      stopPolling();
     };
-  }, [activeJobId, handleStreamEvent, pushToast, streamRevision]);
-
-  const handleRetryStream = useCallback(() => {
-    if (!activeJobId) {
-      pushToast("info", "No active job to reconnect.");
-      return;
-    }
-    closeEventStream();
-    setStreamError(null);
-    setStreamRevision((prev) => prev + 1);
-  }, [activeJobId, closeEventStream, pushToast]);
+  }, [activeJobId, refreshJobStatus, stopPolling]);
 
   const handleGenerateEmails = useCallback(async () => {
     const trimmedSubject = subject.trim();
@@ -1159,19 +934,22 @@ export default function Rolodex() {
       rewriteGuide,
     };
 
-    closeEventStream();
-    setActiveJobId("");
-    setStreamError(null);
-    setRewriteJobState(null);
+    if (EMAIL_JOBS_ENABLED) {
+      stopPolling();
+      setActiveJobId("");
+    }
+    setJobStatus(null);
     setAiResults([]);
     setIsGenerating(true);
+    setIsSendingBatch(false);
+
+    const endpoint = EMAIL_JOBS_ENABLED ? "/api/email-jobs" : "/api/email-rewrite";
 
     try {
-      const response = await fetch("/api/email-rewrite", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "email",
           template: { ...templatePayload, rewriteGuide },
           dataset: { ...dataset, rewriteGuide },
           options,
@@ -1185,7 +963,7 @@ export default function Rolodex() {
         data = null;
       }
 
-      if (response.status === 202) {
+      if (EMAIL_JOBS_ENABLED && response.status === 202) {
         const jobId =
           typeof data?.jobId === "string"
             ? data.jobId
@@ -1195,15 +973,17 @@ export default function Rolodex() {
         if (!jobId) {
           throw new Error("Rewrite service did not return a job ID.");
         }
-        const initialCounts = mergeCounts(
-          null,
-          data?.counts,
-          undefined,
-          expectedTotal
-        );
-        setRewriteJobState({
+        const progress =
+          data?.progress && typeof data.progress === "object"
+            ? data.progress
+            : {
+                done: 0,
+                total: expectedTotal,
+                percent: expectedTotal ? 0 : 0,
+              };
+        setJobStatus({
           id: jobId,
-          expectedTotal,
+          status: data?.status ?? "queued",
           stage:
             typeof data?.stage === "string" && data.stage
               ? data.stage
@@ -1211,16 +991,16 @@ export default function Rolodex() {
           detail:
             typeof data?.detail === "string" && data.detail
               ? data.detail
-              : "Waiting for rewrite.",
-          counts: initialCounts,
-          completed: false,
-          lastUpdate: Date.now(),
+              : "Waiting for rewrite to start.",
+          progress,
+          previews: [],
+          error: null,
+          sendSummary: { sent: 0, failed: 0 },
         });
         setActiveJobId(jobId);
-        setStreamError(null);
         pushToast(
           "info",
-          "Rewrite job queued. You'll see drafts stream in as they are ready."
+          "Rewrite job queued. You'll see updates here as drafts complete."
         );
         return;
       }
@@ -1240,23 +1020,21 @@ export default function Rolodex() {
 
       if (emails.length === 0) {
         setAiResults([]);
-        const fallbackTotal = expectedTotal;
-        setRewriteJobState({
+        setJobStatus({
           id: data?.jobId ? String(data.jobId) : "",
-          expectedTotal: fallbackTotal,
-          stage: "completed",
+          status: "ready",
+          stage: "done",
           detail: "No drafts were returned.",
-          counts: mergeCounts(
-            null,
-            { total: fallbackTotal, sent: 0, failed: 0 },
-            undefined,
-            fallbackTotal
-          ),
-          completed: true,
-          lastUpdate: Date.now(),
+          progress: {
+            done: expectedTotal,
+            total: expectedTotal,
+            percent: expectedTotal ? 100 : 0,
+          },
+          previews: [],
+          error: null,
+          sendSummary: { sent: 0, failed: 0 },
         });
         setIsGenerating(false);
-        setStreamError(null);
         pushToast("info", "No drafts returned.");
         return;
       }
@@ -1310,26 +1088,24 @@ export default function Rolodex() {
 
       const resolvedTotal = results.length || expectedTotal;
 
-      setRewriteJobState({
+      setJobStatus({
         id: data?.jobId ? String(data.jobId) : "",
-        expectedTotal: resolvedTotal,
-        stage: "completed",
+        status: "ready",
+        stage: "done",
         detail: "Drafts generated.",
-        counts: mergeCounts(
-          null,
-          {
-            total: resolvedTotal,
-            sent: sendSummary?.sent,
-            failed: sendSummary?.failed,
+        progress: {
+          done: resolvedTotal,
+          total: resolvedTotal,
+          percent: resolvedTotal ? 100 : 0,
+        },
+        previews: [],
+        error: null,
+        sendSummary:
+          sendSummary ?? {
+            sent: 0,
+            failed: 0,
           },
-          "batch_done",
-          resolvedTotal
-        ),
-        completed: true,
-        lastUpdate: Date.now(),
       });
-
-      setStreamError(null);
 
       pushToast(
         "success",
@@ -1352,14 +1128,15 @@ export default function Rolodex() {
 
       setIsGenerating(false);
     } catch (error) {
-      closeEventStream();
       setActiveJobId("");
-      setRewriteJobState(null);
       setIsGenerating(false);
-      setStreamError(null);
       const message =
         error instanceof Error ? error.message : "Failed to generate drafts.";
+      setJobStatus((prev) =>
+        prev ? { ...prev, status: "error", error: message } : prev
+      );
       pushToast("error", message);
+      stopPolling();
     }
   }, [
     campaignCompany,
@@ -1371,12 +1148,94 @@ export default function Rolodex() {
     hasValidToValue,
     invalidToChips,
     pushToast,
+    stopPolling,
     studentName,
     studentSchool,
     subject,
     toChips,
-    closeEventStream,
   ]);
+
+  const handleSendBatch = useCallback(async () => {
+    if (!EMAIL_JOBS_ENABLED) {
+      pushToast("info", "Background jobs are disabled.");
+      return;
+    }
+    const jobId = jobStatus?.id;
+    if (!jobId) {
+      pushToast("info", "Generate drafts before sending emails.");
+      return;
+    }
+    if (isSendingBatch) {
+      return;
+    }
+    setIsSendingBatch(true);
+    try {
+      const response = await fetch(`/api/email-jobs/${jobId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchSize: DEFAULT_BATCH_SIZE,
+          paceMs: 250,
+        }),
+      });
+      const text = await response.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+      if (!response.ok) {
+        const message =
+          (data && typeof data === "object" && data.error)
+            ? data.error
+            : response.statusText || "Failed to send batch.";
+        throw new Error(message);
+      }
+      if (data?.totals) {
+        setJobStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                sendSummary: {
+                  sent:
+                    typeof data.totals.sent === "number"
+                      ? data.totals.sent
+                      : prev.sendSummary.sent,
+                  failed:
+                    typeof data.totals.failed === "number"
+                      ? data.totals.failed
+                      : prev.sendSummary.failed,
+                },
+              }
+            : prev
+        );
+      }
+      await refreshJobStatus(jobId, { silent: true });
+      const remaining =
+        typeof data?.remaining === "number" ? data.remaining : null;
+      const sentCount = typeof data?.sent === "number" ? data.sent : 0;
+      const failedCount = typeof data?.failed === "number" ? data.failed : 0;
+      if (remaining === 0) {
+        pushToast("success", "All emails sent.");
+      } else {
+        const pieces = [`Sent ${sentCount} email${sentCount === 1 ? "" : "s"}`];
+        if (failedCount > 0) {
+          pieces.push(`${failedCount} failed`);
+        }
+        if (remaining != null) {
+          pieces.push(`${remaining} remaining`);
+        }
+        pushToast("success", pieces.join(" • "));
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to send batch.";
+      pushToast("error", message);
+    } finally {
+      setIsSendingBatch(false);
+    }
+  }, [isSendingBatch, jobStatus?.id, pushToast, refreshJobStatus]);
 
   const handleToggleResultExclude = useCallback((index) => {
     setAiResults((prev) =>
@@ -2263,15 +2122,15 @@ export default function Rolodex() {
 
               <AiResultsPanel
                 results={aiResults}
-                progress={rewriteJobState}
-                isStreaming={Boolean(activeJobId)}
-                streamError={streamError}
+                jobStatus={jobStatus}
+                isGenerating={isGenerating}
                 downloadsEnabled={downloadsEnabled}
                 onDownload={handleDownloadResults}
                 onToggleEdit={handleToggleResultEdit}
                 onToggleExclude={handleToggleResultExclude}
                 onFieldChange={handleResultFieldChange}
-                onRetryStream={handleRetryStream}
+                onSendBatch={EMAIL_JOBS_ENABLED ? handleSendBatch : undefined}
+                isSending={isSendingBatch}
               />
             </div>
           )}
