@@ -23,16 +23,17 @@ export async function POST(
     return NextResponse.json({ error: "HMAC secret not configured" }, { status: 500 });
   }
 
-  let body: any = {};
-  try {
-    body = await req.json();
-  } catch {
-    body = {};
+  const signature = req.headers.get("x-signature");
+  const rawPayload = await req.text();
+  if (!verifyHmacSignature(signature, rawPayload, secret)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const signature = req.headers.get("x-signature");
-  if (!verifyHmacSignature(signature, body, secret)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  let body: any = {};
+  try {
+    body = rawPayload ? JSON.parse(rawPayload) : {};
+  } catch {
+    body = {};
   }
 
   const job = getJob(jobId);
