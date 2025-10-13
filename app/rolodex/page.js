@@ -130,6 +130,9 @@ const BUILT_IN_PLACEHOLDERS = [
   { id: "draft", label: "[draft]", token: "{{draft}}" },
 ];
 
+const RESPONSE_RECIPIENT_KEYS = ["to", "recipient", "recipients", "email", "address"];
+const RESPONSE_CONTENT_KEYS = ["subject", "body", "html", "text", "content", "message"];
+
 function buildRewriteGuide(body) {
   if (!body) return "";
   return body.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
@@ -211,6 +214,81 @@ function formatRelativeTime(value) {
     return `${Math.abs(diffHours)} hour${Math.abs(diffHours) === 1 ? "" : "s"} ${diffHours > 0 ? "ago" : "from now"}`;
   }
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays > 0 ? "ago" : "from now"}`;
+}
+
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    if (value == null) {
+      return "";
+    }
+    if (typeof value === "object") {
+      return Object.prototype.toString.call(value);
+    }
+    return String(value);
+  }
+}
+
+function isEmailLikeRecord(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const keys = Object.keys(value);
+  const hasRecipient = keys.some((key) => RESPONSE_RECIPIENT_KEYS.includes(key));
+  const hasContent = keys.some((key) => RESPONSE_CONTENT_KEYS.includes(key));
+  return hasRecipient || hasContent;
+}
+
+function extractRewriteResponseEmails(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  const visited = typeof WeakSet === "function" ? new WeakSet() : null;
+
+  const visit = (value, path = "$") => {
+    if (value && typeof value === "object") {
+      if (visited) {
+        if (visited.has(value)) {
+          return;
+        }
+        visited.add(value);
+      }
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        visit(item, `${path}[${index}]`);
+      });
+      return;
+    }
+    if (value && typeof value === "object") {
+      if (isEmailLikeRecord(value)) {
+        pushRow(value, path);
+      }
+      Object.entries(value).forEach(([key, nested]) => {
+        if (nested && (typeof nested === "object" || Array.isArray(nested))) {
+          visit(nested, `${path}.${key}`);
+        }
+      });
+    }
+  };
+
+  const pushRow = (candidate, path) => {
+    const jsonString = safeStringify(candidate);
+    if (!jsonString || seen.has(jsonString)) {
+      return;
+    }
+    seen.add(jsonString);
+    rows.push({
+      path,
+      json: jsonString,
+    });
+  };
+
+  visit(payload);
+  return rows;
 }
 
 function getValueAtPath(source, path) {
@@ -432,6 +510,7 @@ export default function Rolodex() {
   const [previewContent, setPreviewContent] = useState(null);
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
+  const [rewriteResponse, setRewriteResponse] = useState(null);
   const [sendingDraftId, setSendingDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
@@ -1223,6 +1302,16 @@ export default function Rolodex() {
     [requestPreview]
   );
 
+  const responseEmailRows = useMemo(
+    () => extractRewriteResponseEmails(rewriteResponse),
+    [rewriteResponse]
+  );
+
+  const rewriteResponseJson = useMemo(
+    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
+    [rewriteResponse]
+  );
+
   const canGenerate = useMemo(() => {
     if (isGenerating) {
       return false;
@@ -1404,6 +1493,7 @@ export default function Rolodex() {
       rewriteGuide,
     };
 
+    setRewriteResponse(null);
     setIsGenerating(true);
     try {
       const response = await fetch("/api/email-rewrite", {
@@ -1421,8 +1511,9 @@ export default function Rolodex() {
       try {
         data = text ? JSON.parse(text) : null;
       } catch {
-        data = null;
+        data = text ? { raw: text } : null;
       }
+      setRewriteResponse(data ?? null);
       if (!response.ok) {
         const message =
           (data && typeof data === "object" && data.error) ||
@@ -2650,6 +2741,37 @@ export default function Rolodex() {
                         <pre className="preview-json-body">{requestPreviewJson}</pre>
                       </div>
                     ) : null}
+                  </div>
+                )}
+                {rewriteResponse && (
+                  <div className="preview-response" aria-live="polite">
+                    <span className="preview-meta-label">Response JSON</span>
+                    {responseEmailRows.length > 0 ? (
+                      <div className="preview-response-table-wrapper">
+                        <table className="preview-response-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">#</th>
+                              <th scope="col">Location</th>
+                              <th scope="col">JSON</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {responseEmailRows.map((row, index) => (
+                              <tr key={`${row.path}-${index}`}>
+                                <td>{index + 1}</td>
+                                <td className="preview-response-path">{row.path}</td>
+                                <td>
+                                  <pre className="preview-response-json">{row.json}</pre>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <pre className="preview-json-body">{rewriteResponseJson}</pre>
+                    )}
                   </div>
                 )}
               </div>
