@@ -431,6 +431,8 @@ export default function Rolodex() {
   const [previewContactId, setPreviewContactId] = useState("");
   const [previewContent, setPreviewContent] = useState(null);
   const [aiResults, setAiResults] = useState([]);
+  const [sendResults, setSendResults] = useState([]);
+  const [sendingDraftId, setSendingDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
   const [campaignCompany, setCampaignCompany] = useState(DEFAULT_TEMPLATE.company);
@@ -1335,19 +1337,34 @@ export default function Rolodex() {
       const emails = Array.isArray(data?.emails) ? data.emails : [];
       if (emails.length === 0) {
         setAiResults([]);
+        setSendResults([]);
         pushToast("info", "No drafts returned.");
         return;
       }
-      setAiResults(
-        emails.map((item, index) => ({
-          id: `${index}-${item?.to ?? ""}`,
-          to: item?.to ?? "",
-          subject: item?.subject ?? "",
-          body: item?.body ?? "",
-          excluded: false,
-          isEditing: false,
-        }))
-      );
+      const normalizedEmails = emails.map((item, index) => ({
+        id: `${index}-${item?.to ?? ""}`,
+        to: item?.to ?? "",
+        subject: item?.subject ?? "",
+        body: item?.body ?? "",
+        excluded: false,
+        isEditing: false,
+      }));
+      setAiResults(normalizedEmails);
+      const timestamp = new Date().toISOString();
+      const rawSendResults = Array.isArray(data?.sendResults) ? data.sendResults : [];
+      const normalizedSendResults = normalizedEmails.map((item, index) => {
+        const result = rawSendResults[index] ?? null;
+        const toAddress =
+          (result && typeof result.to === "string" && result.to.trim()) || item.to || "";
+        return {
+          id: item.id,
+          to: toAddress,
+          success: Boolean(result?.success),
+          error: result?.error ? String(result.error) : "",
+          lastAttemptedAt: result ? timestamp : null,
+        };
+      });
+      setSendResults(normalizedSendResults);
       const sendSummary = Array.isArray(data?.sendResults)
         ? data.sendResults.reduce(
             (acc, item) => {
@@ -1382,6 +1399,8 @@ export default function Rolodex() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to generate drafts.";
+      setAiResults([]);
+      setSendResults([]);
       pushToast("error", message);
     } finally {
       setIsGenerating(false);
@@ -1419,12 +1438,117 @@ export default function Rolodex() {
   }, []);
 
   const handleResultFieldChange = useCallback((index, field, value) => {
+    let updatedId = null;
     setAiResults((prev) =>
-      prev.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      )
+      prev.map((item, itemIndex) => {
+        if (itemIndex === index) {
+          updatedId = item.id ?? updatedId;
+          return { ...item, [field]: value };
+        }
+        return item;
+      })
+    );
+    setSendResults((prev) =>
+      prev.map((item, itemIndex) => {
+        if ((updatedId && item.id === updatedId) || (!updatedId && itemIndex === index)) {
+          return { ...item, success: false, error: "", lastAttemptedAt: null };
+        }
+        return item;
+      })
     );
   }, []);
+
+  const sendResultMap = useMemo(() => {
+    const map = new Map();
+    for (const item of sendResults) {
+      if (item && item.id) {
+        map.set(item.id, item);
+      }
+    }
+    return map;
+  }, [sendResults]);
+
+  const handleSendDraft = useCallback(
+    async (index) => {
+      const draft = aiResults[index];
+      if (!draft) {
+        pushToast("error", "Unable to locate this draft.");
+        return;
+      }
+      const recipient = (draft.to || "").trim();
+      if (!recipient) {
+        pushToast("error", "Add a recipient before sending.");
+        return;
+      }
+      setSendingDraftId(draft.id);
+      const attemptedAt = new Date().toISOString();
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: recipient,
+            subject: draft.subject ?? "",
+            html: draft.body ?? "",
+          }),
+        });
+        let errorMessage = "";
+        if (!response.ok) {
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload === "object" && payload.error) {
+              errorMessage = String(payload.error);
+            }
+          } catch {
+            errorMessage = response.statusText || "Failed to send email.";
+          }
+          throw new Error(errorMessage || "Failed to send email.");
+        }
+        setSendResults((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const base = {
+            id: draft.id,
+            to: recipient,
+            success: true,
+            error: "",
+            lastAttemptedAt: attemptedAt,
+          };
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...base };
+          } else {
+            next.push(base);
+          }
+          return next;
+        });
+        pushToast("success", `Email sent to ${recipient}.`);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message ? error.message : "Failed to send email.";
+        setSendResults((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const base = {
+            id: draft.id,
+            to: recipient,
+            success: false,
+            error: message,
+            lastAttemptedAt: attemptedAt,
+          };
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...base };
+          } else {
+            next.push(base);
+          }
+          return next;
+        });
+        pushToast("error", message);
+      } finally {
+        setSendingDraftId(null);
+      }
+    },
+    [aiResults, pushToast]
+  );
 
   const handleDownloadResults = useCallback(
     (format) => {
@@ -2178,7 +2302,6 @@ export default function Rolodex() {
               </div>
 
               <div className="email-composer-card">
-                <div className="ai-style-badge">AI writes in Canadian English.</div>
                 <div className="composer-context">
                   <div className="field">
                     <label className="field-label" htmlFor="campaignRole">
@@ -2451,11 +2574,25 @@ export default function Rolodex() {
                     </div>
                   </div>
                   <div className="ai-results-list">
-                    {aiResults.map((result, index) => (
-                      <div
-                        key={result.id || index}
-                        className={`ai-result${result.excluded ? " excluded" : ""}`}
-                      >
+                    {aiResults.map((result, index) => {
+                      const sendInfo = sendResultMap.get(result.id);
+                      const statusText = sendInfo
+                        ? sendInfo.success
+                          ? "Sent successfully."
+                          : sendInfo.error
+                          ? "Failed to send."
+                          : "Ready to send."
+                        : "Ready to send.";
+                      const statusDetail = sendInfo?.error ? sendInfo.error : null;
+                      const lastAttempt =
+                        sendInfo?.lastAttemptedAt &&
+                        formatTimestamp(sendInfo.lastAttemptedAt);
+                      const isSending = sendingDraftId === result.id;
+                      return (
+                        <div
+                          key={result.id || index}
+                          className={`ai-result${result.excluded ? " excluded" : ""}`}
+                        >
                         <div className="ai-result-header">
                           <h4>Contact {index + 1}</h4>
                           <div className="ai-result-buttons">
@@ -2503,9 +2640,9 @@ export default function Rolodex() {
                             <span className="ai-result-value">{result.subject || "—"}</span>
                           )}
                         </div>
-                        <div className="ai-result-field">
-                          <span className="ai-result-label">Body</span>
-                          {result.isEditing ? (
+                          <div className="ai-result-field">
+                            <span className="ai-result-label">Body</span>
+                            {result.isEditing ? (
                             <textarea
                               className="text-area"
                               value={result.body}
@@ -2516,10 +2653,41 @@ export default function Rolodex() {
                             />
                           ) : (
                             <pre className="ai-result-body-text">{result.body || ""}</pre>
-                          )}
+                            )}
+                          </div>
+                          <div className="ai-result-footer">
+                            <div
+                              className={`send-status${
+                                sendInfo?.success ? " success" : sendInfo?.error ? " error" : ""
+                              }`}
+                            >
+                              <span className="send-status-dot" aria-hidden="true" />
+                              <div className="send-status-text">
+                                <span className="send-status-message">{statusText}</span>
+                                {statusDetail ? (
+                                  <span className="send-status-subtext">{statusDetail}</span>
+                                ) : null}
+                                {lastAttempt ? (
+                                  <span className="send-status-subtext">
+                                    Last attempted {lastAttempt}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="button secondary small"
+                              onClick={() => handleSendDraft(index)}
+                              disabled={Boolean(sendInfo?.success) || isSending}
+                              aria-busy={isSending}
+                            >
+                              {isSending ? <IconLoader /> : null}
+                              {sendInfo?.success ? "Sent" : "Send"}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

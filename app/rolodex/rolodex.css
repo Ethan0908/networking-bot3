@@ -497,16 +497,6 @@ html.theme-dark {
   gap: 16px;
 }
 
-.ai-style-badge {
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--info);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
 .chip-input {
   display: flex;
   flex-wrap: wrap;
@@ -815,6 +805,56 @@ html.theme-dark {
   color: var(--text-primary);
 }
 
+.ai-result-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.send-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.send-status.success {
+  color: var(--success);
+}
+
+.send-status.error {
+  color: var(--danger);
+}
+
+.send-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: currentColor;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.send-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.send-status-message {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.send-status-subtext {
+  font-size: 0.75rem;
+  color: inherit;
+  opacity: 0.85;
+}
+
 @media (max-width: 640px) {
   .composer-actions {
     flex-direction: column;
@@ -1031,6 +1071,12 @@ html.theme-dark {
 
 .button:not(:disabled):active {
   transform: translateY(1px);
+}
+
+.button.small {
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  border-radius: 10px;
 }
 
 .loader {
