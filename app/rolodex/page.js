@@ -130,6 +130,9 @@ const BUILT_IN_PLACEHOLDERS = [
   { id: "draft", label: "[draft]", token: "{{draft}}" },
 ];
 
+const RESPONSE_RECIPIENT_KEYS = ["to", "recipient", "recipients", "email", "address"];
+const RESPONSE_CONTENT_KEYS = ["subject", "body", "html", "text", "content", "message"];
+
 function buildRewriteGuide(body) {
   if (!body) return "";
   return body.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
@@ -211,6 +214,81 @@ function formatRelativeTime(value) {
     return `${Math.abs(diffHours)} hour${Math.abs(diffHours) === 1 ? "" : "s"} ${diffHours > 0 ? "ago" : "from now"}`;
   }
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ${diffDays > 0 ? "ago" : "from now"}`;
+}
+
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    if (value == null) {
+      return "";
+    }
+    if (typeof value === "object") {
+      return Object.prototype.toString.call(value);
+    }
+    return String(value);
+  }
+}
+
+function isEmailLikeRecord(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const keys = Object.keys(value);
+  const hasRecipient = keys.some((key) => RESPONSE_RECIPIENT_KEYS.includes(key));
+  const hasContent = keys.some((key) => RESPONSE_CONTENT_KEYS.includes(key));
+  return hasRecipient || hasContent;
+}
+
+function extractRewriteResponseEmails(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  const visited = typeof WeakSet === "function" ? new WeakSet() : null;
+
+  const visit = (value, path = "$") => {
+    if (value && typeof value === "object") {
+      if (visited) {
+        if (visited.has(value)) {
+          return;
+        }
+        visited.add(value);
+      }
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => {
+        visit(item, `${path}[${index}]`);
+      });
+      return;
+    }
+    if (value && typeof value === "object") {
+      if (isEmailLikeRecord(value)) {
+        pushRow(value, path);
+      }
+      Object.entries(value).forEach(([key, nested]) => {
+        if (nested && (typeof nested === "object" || Array.isArray(nested))) {
+          visit(nested, `${path}.${key}`);
+        }
+      });
+    }
+  };
+
+  const pushRow = (candidate, path) => {
+    const jsonString = safeStringify(candidate);
+    if (!jsonString || seen.has(jsonString)) {
+      return;
+    }
+    seen.add(jsonString);
+    rows.push({
+      path,
+      json: jsonString,
+    });
+  };
+
+  visit(payload);
+  return rows;
 }
 
 function getValueAtPath(source, path) {
@@ -431,6 +509,9 @@ export default function Rolodex() {
   const [previewContactId, setPreviewContactId] = useState("");
   const [previewContent, setPreviewContent] = useState(null);
   const [aiResults, setAiResults] = useState([]);
+  const [sendResults, setSendResults] = useState([]);
+  const [rewriteResponse, setRewriteResponse] = useState(null);
+  const [sendingDraftId, setSendingDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
   const [campaignCompany, setCampaignCompany] = useState(DEFAULT_TEMPLATE.company);
@@ -1125,6 +1206,112 @@ export default function Rolodex() {
     [aiResults]
   );
 
+  const requestPreview = useMemo(() => {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = emailBody.trim();
+    if (!trimmedSubject || !trimmedBody) {
+      return null;
+    }
+    if (bodyMissingDraft || !hasValidToValue || invalidToChips.length > 0) {
+      return null;
+    }
+    if (!hasValidContactEmail) {
+      return null;
+    }
+
+    const contactsPayload = contactsWithEmails.map((contact) => {
+      const normalized = { ...contact };
+      const name = resolveContactName(contact);
+      if (name) {
+        if (!normalized.name) {
+          normalized.name = name;
+        }
+        if (!normalized.full_name && !normalized.fullName) {
+          normalized.full_name = name;
+        }
+      }
+      const emailValue = resolveContactEmail(contact);
+      if (emailValue && !normalized.email) {
+        normalized.email = emailValue;
+      }
+      delete normalized.__contactId;
+      return normalized;
+    });
+
+    if (contactsPayload.length === 0) {
+      return null;
+    }
+
+    const serialisedTo = Array.isArray(toChips)
+      ? toChips.filter((item) => item && typeof item === "string").join(", ")
+      : typeof toChips === "string"
+      ? toChips
+      : "";
+
+    const templatePayload = {
+      to: serialisedTo,
+      subject: trimmedSubject,
+      body: trimmedBody,
+      repeat: { over: "contacts", as: "contact" },
+    };
+
+    const studentContext = studentName || studentSchool
+      ? { name: studentName || null, school: studentSchool || null }
+      : null;
+
+    const dataset = {
+      student: studentContext,
+      role: campaignRole || null,
+      company: campaignCompany || null,
+      contacts: contactsPayload,
+    };
+
+    const rewriteGuide = buildRewriteGuide(trimmedBody);
+
+    const options = {
+      batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
+      dryRun: true,
+      rewriteGuide,
+    };
+
+    return {
+      action: "email",
+      template: { ...templatePayload, rewriteGuide },
+      dataset: { ...dataset, rewriteGuide },
+      options,
+    };
+  }, [
+    bodyMissingDraft,
+    campaignCompany,
+    campaignRole,
+    contactsWithEmails,
+    emailBody,
+    hasValidContactEmail,
+    hasValidToValue,
+    invalidToChips,
+    resolveContactEmail,
+    resolveContactName,
+    studentName,
+    studentSchool,
+    subject,
+    toChips,
+  ]);
+
+  const requestPreviewJson = useMemo(
+    () => (requestPreview ? JSON.stringify(requestPreview, null, 2) : ""),
+    [requestPreview]
+  );
+
+  const responseEmailRows = useMemo(
+    () => extractRewriteResponseEmails(rewriteResponse),
+    [rewriteResponse]
+  );
+
+  const rewriteResponseJson = useMemo(
+    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
+    [rewriteResponse]
+  );
+
   const canGenerate = useMemo(() => {
     if (isGenerating) {
       return false;
@@ -1306,6 +1493,7 @@ export default function Rolodex() {
       rewriteGuide,
     };
 
+    setRewriteResponse(null);
     setIsGenerating(true);
     try {
       const response = await fetch("/api/email-rewrite", {
@@ -1323,8 +1511,9 @@ export default function Rolodex() {
       try {
         data = text ? JSON.parse(text) : null;
       } catch {
-        data = null;
+        data = text ? { raw: text } : null;
       }
+      setRewriteResponse(data ?? null);
       if (!response.ok) {
         const message =
           (data && typeof data === "object" && data.error) ||
@@ -1335,19 +1524,34 @@ export default function Rolodex() {
       const emails = Array.isArray(data?.emails) ? data.emails : [];
       if (emails.length === 0) {
         setAiResults([]);
+        setSendResults([]);
         pushToast("info", "No drafts returned.");
         return;
       }
-      setAiResults(
-        emails.map((item, index) => ({
-          id: `${index}-${item?.to ?? ""}`,
-          to: item?.to ?? "",
-          subject: item?.subject ?? "",
-          body: item?.body ?? "",
-          excluded: false,
-          isEditing: false,
-        }))
-      );
+      const normalizedEmails = emails.map((item, index) => ({
+        id: `${index}-${item?.to ?? ""}`,
+        to: item?.to ?? "",
+        subject: item?.subject ?? "",
+        body: item?.body ?? "",
+        excluded: false,
+        isEditing: false,
+      }));
+      setAiResults(normalizedEmails);
+      const timestamp = new Date().toISOString();
+      const rawSendResults = Array.isArray(data?.sendResults) ? data.sendResults : [];
+      const normalizedSendResults = normalizedEmails.map((item, index) => {
+        const result = rawSendResults[index] ?? null;
+        const toAddress =
+          (result && typeof result.to === "string" && result.to.trim()) || item.to || "";
+        return {
+          id: item.id,
+          to: toAddress,
+          success: Boolean(result?.success),
+          error: result?.error ? String(result.error) : "",
+          lastAttemptedAt: result ? timestamp : null,
+        };
+      });
+      setSendResults(normalizedSendResults);
       const sendSummary = Array.isArray(data?.sendResults)
         ? data.sendResults.reduce(
             (acc, item) => {
@@ -1382,6 +1586,8 @@ export default function Rolodex() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to generate drafts.";
+      setAiResults([]);
+      setSendResults([]);
       pushToast("error", message);
     } finally {
       setIsGenerating(false);
@@ -1419,12 +1625,117 @@ export default function Rolodex() {
   }, []);
 
   const handleResultFieldChange = useCallback((index, field, value) => {
+    let updatedId = null;
     setAiResults((prev) =>
-      prev.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      )
+      prev.map((item, itemIndex) => {
+        if (itemIndex === index) {
+          updatedId = item.id ?? updatedId;
+          return { ...item, [field]: value };
+        }
+        return item;
+      })
+    );
+    setSendResults((prev) =>
+      prev.map((item, itemIndex) => {
+        if ((updatedId && item.id === updatedId) || (!updatedId && itemIndex === index)) {
+          return { ...item, success: false, error: "", lastAttemptedAt: null };
+        }
+        return item;
+      })
     );
   }, []);
+
+  const sendResultMap = useMemo(() => {
+    const map = new Map();
+    for (const item of sendResults) {
+      if (item && item.id) {
+        map.set(item.id, item);
+      }
+    }
+    return map;
+  }, [sendResults]);
+
+  const handleSendDraft = useCallback(
+    async (index) => {
+      const draft = aiResults[index];
+      if (!draft) {
+        pushToast("error", "Unable to locate this draft.");
+        return;
+      }
+      const recipient = (draft.to || "").trim();
+      if (!recipient) {
+        pushToast("error", "Add a recipient before sending.");
+        return;
+      }
+      setSendingDraftId(draft.id);
+      const attemptedAt = new Date().toISOString();
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: recipient,
+            subject: draft.subject ?? "",
+            html: draft.body ?? "",
+          }),
+        });
+        let errorMessage = "";
+        if (!response.ok) {
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload === "object" && payload.error) {
+              errorMessage = String(payload.error);
+            }
+          } catch {
+            errorMessage = response.statusText || "Failed to send email.";
+          }
+          throw new Error(errorMessage || "Failed to send email.");
+        }
+        setSendResults((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const base = {
+            id: draft.id,
+            to: recipient,
+            success: true,
+            error: "",
+            lastAttemptedAt: attemptedAt,
+          };
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...base };
+          } else {
+            next.push(base);
+          }
+          return next;
+        });
+        pushToast("success", `Email sent to ${recipient}.`);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message ? error.message : "Failed to send email.";
+        setSendResults((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const base = {
+            id: draft.id,
+            to: recipient,
+            success: false,
+            error: message,
+            lastAttemptedAt: attemptedAt,
+          };
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...base };
+          } else {
+            next.push(base);
+          }
+          return next;
+        });
+        pushToast("error", message);
+      } finally {
+        setSendingDraftId(null);
+      }
+    },
+    [aiResults, pushToast]
+  );
 
   const handleDownloadResults = useCallback(
     (format) => {
@@ -2178,7 +2489,6 @@ export default function Rolodex() {
               </div>
 
               <div className="email-composer-card">
-                <div className="ai-style-badge">AI writes in Canadian English.</div>
                 <div className="composer-context">
                   <div className="field">
                     <label className="field-label" htmlFor="campaignRole">
@@ -2425,6 +2735,43 @@ export default function Rolodex() {
                       </div>
                     </div>
                     <pre className="preview-body">{previewContent.body || ""}</pre>
+                    {requestPreviewJson ? (
+                      <div className="preview-json">
+                        <span className="preview-meta-label">Request JSON</span>
+                        <pre className="preview-json-body">{requestPreviewJson}</pre>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+                {rewriteResponse && (
+                  <div className="preview-response" aria-live="polite">
+                    <span className="preview-meta-label">Response JSON</span>
+                    {responseEmailRows.length > 0 ? (
+                      <div className="preview-response-table-wrapper">
+                        <table className="preview-response-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">#</th>
+                              <th scope="col">Location</th>
+                              <th scope="col">JSON</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {responseEmailRows.map((row, index) => (
+                              <tr key={`${row.path}-${index}`}>
+                                <td>{index + 1}</td>
+                                <td className="preview-response-path">{row.path}</td>
+                                <td>
+                                  <pre className="preview-response-json">{row.json}</pre>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <pre className="preview-json-body">{rewriteResponseJson}</pre>
+                    )}
                   </div>
                 )}
               </div>
@@ -2451,11 +2798,25 @@ export default function Rolodex() {
                     </div>
                   </div>
                   <div className="ai-results-list">
-                    {aiResults.map((result, index) => (
-                      <div
-                        key={result.id || index}
-                        className={`ai-result${result.excluded ? " excluded" : ""}`}
-                      >
+                    {aiResults.map((result, index) => {
+                      const sendInfo = sendResultMap.get(result.id);
+                      const statusText = sendInfo
+                        ? sendInfo.success
+                          ? "Sent successfully."
+                          : sendInfo.error
+                          ? "Failed to send."
+                          : "Ready to send."
+                        : "Ready to send.";
+                      const statusDetail = sendInfo?.error ? sendInfo.error : null;
+                      const lastAttempt =
+                        sendInfo?.lastAttemptedAt &&
+                        formatTimestamp(sendInfo.lastAttemptedAt);
+                      const isSending = sendingDraftId === result.id;
+                      return (
+                        <div
+                          key={result.id || index}
+                          className={`ai-result${result.excluded ? " excluded" : ""}`}
+                        >
                         <div className="ai-result-header">
                           <h4>Contact {index + 1}</h4>
                           <div className="ai-result-buttons">
@@ -2503,9 +2864,9 @@ export default function Rolodex() {
                             <span className="ai-result-value">{result.subject || "—"}</span>
                           )}
                         </div>
-                        <div className="ai-result-field">
-                          <span className="ai-result-label">Body</span>
-                          {result.isEditing ? (
+                          <div className="ai-result-field">
+                            <span className="ai-result-label">Body</span>
+                            {result.isEditing ? (
                             <textarea
                               className="text-area"
                               value={result.body}
@@ -2516,10 +2877,41 @@ export default function Rolodex() {
                             />
                           ) : (
                             <pre className="ai-result-body-text">{result.body || ""}</pre>
-                          )}
+                            )}
+                          </div>
+                          <div className="ai-result-footer">
+                            <div
+                              className={`send-status${
+                                sendInfo?.success ? " success" : sendInfo?.error ? " error" : ""
+                              }`}
+                            >
+                              <span className="send-status-dot" aria-hidden="true" />
+                              <div className="send-status-text">
+                                <span className="send-status-message">{statusText}</span>
+                                {statusDetail ? (
+                                  <span className="send-status-subtext">{statusDetail}</span>
+                                ) : null}
+                                {lastAttempt ? (
+                                  <span className="send-status-subtext">
+                                    Last attempted {lastAttempt}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="button secondary small"
+                              onClick={() => handleSendDraft(index)}
+                              disabled={Boolean(sendInfo?.success) || isSending}
+                              aria-busy={isSending}
+                            >
+                              {isSending ? <IconLoader /> : null}
+                              {sendInfo?.success ? "Sent" : "Send"}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
