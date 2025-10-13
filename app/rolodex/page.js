@@ -1127,6 +1127,102 @@ export default function Rolodex() {
     [aiResults]
   );
 
+  const requestPreview = useMemo(() => {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = emailBody.trim();
+    if (!trimmedSubject || !trimmedBody) {
+      return null;
+    }
+    if (bodyMissingDraft || !hasValidToValue || invalidToChips.length > 0) {
+      return null;
+    }
+    if (!hasValidContactEmail) {
+      return null;
+    }
+
+    const contactsPayload = contactsWithEmails.map((contact) => {
+      const normalized = { ...contact };
+      const name = resolveContactName(contact);
+      if (name) {
+        if (!normalized.name) {
+          normalized.name = name;
+        }
+        if (!normalized.full_name && !normalized.fullName) {
+          normalized.full_name = name;
+        }
+      }
+      const emailValue = resolveContactEmail(contact);
+      if (emailValue && !normalized.email) {
+        normalized.email = emailValue;
+      }
+      delete normalized.__contactId;
+      return normalized;
+    });
+
+    if (contactsPayload.length === 0) {
+      return null;
+    }
+
+    const serialisedTo = Array.isArray(toChips)
+      ? toChips.filter((item) => item && typeof item === "string").join(", ")
+      : typeof toChips === "string"
+      ? toChips
+      : "";
+
+    const templatePayload = {
+      to: serialisedTo,
+      subject: trimmedSubject,
+      body: trimmedBody,
+      repeat: { over: "contacts", as: "contact" },
+    };
+
+    const studentContext = studentName || studentSchool
+      ? { name: studentName || null, school: studentSchool || null }
+      : null;
+
+    const dataset = {
+      student: studentContext,
+      role: campaignRole || null,
+      company: campaignCompany || null,
+      contacts: contactsPayload,
+    };
+
+    const rewriteGuide = buildRewriteGuide(trimmedBody);
+
+    const options = {
+      batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
+      dryRun: true,
+      rewriteGuide,
+    };
+
+    return {
+      action: "email",
+      template: { ...templatePayload, rewriteGuide },
+      dataset: { ...dataset, rewriteGuide },
+      options,
+    };
+  }, [
+    bodyMissingDraft,
+    campaignCompany,
+    campaignRole,
+    contactsWithEmails,
+    emailBody,
+    hasValidContactEmail,
+    hasValidToValue,
+    invalidToChips,
+    resolveContactEmail,
+    resolveContactName,
+    studentName,
+    studentSchool,
+    subject,
+    toChips,
+  ]);
+
+  const requestPreviewJson = useMemo(
+    () => (requestPreview ? JSON.stringify(requestPreview, null, 2) : ""),
+    [requestPreview]
+  );
+
   const canGenerate = useMemo(() => {
     if (isGenerating) {
       return false;
@@ -2548,6 +2644,12 @@ export default function Rolodex() {
                       </div>
                     </div>
                     <pre className="preview-body">{previewContent.body || ""}</pre>
+                    {requestPreviewJson ? (
+                      <div className="preview-json">
+                        <span className="preview-meta-label">Request JSON</span>
+                        <pre className="preview-json-body">{requestPreviewJson}</pre>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>
