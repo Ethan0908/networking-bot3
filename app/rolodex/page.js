@@ -2822,13 +2822,21 @@ export default function Rolodex() {
                 )}
                 {rewriteResponse && (
                   <div className="preview-response" aria-live="polite">
-                    <span className="preview-meta-label">Response JSON</span>
+                    <div className="preview-response-toolbar">
+                      <span className="preview-response-title">Response</span>
+                    </div>
                     {responseEmailRows.length > 0 ? (
-                      <div className="preview-response-table-wrapper">
-                        <table className="preview-response-table">
+                      <div
+                        className="table-scroll preview-response-scroll"
+                        role="group"
+                        aria-label="Response"
+                      >
+                        <table className="view-table preview-response-table">
                           <thead>
                             <tr>
-                              <th scope="col">#</th>
+                              <th scope="col" className="preview-response-index-header">
+                                #
+                              </th>
                               <th scope="col">Email</th>
                               <th scope="col">Subject</th>
                               <th scope="col">Body</th>
@@ -2867,11 +2875,13 @@ export default function Rolodex() {
                                 : "Response is missing an email address.";
                               return (
                                 <tr key={rowKey}>
-                                  <td>{index + 1}</td>
+                                  <td className="preview-response-index">{index + 1}</td>
                                   <td className="preview-response-email">{recipientValue || "—"}</td>
                                   <td className="preview-response-subject">{subjectValue || "—"}</td>
-                                  <td>
-                                    <pre className="preview-body-pre">{bodyValue || "—"}</pre>
+                                  <td className="preview-response-body">
+                                    <pre className="preview-body-pre preview-response-body-pre">
+                                      {bodyValue || "—"}
+                                    </pre>
                                   </td>
                                   <td className="preview-response-send-cell">
                                     <button

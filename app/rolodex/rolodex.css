@@ -721,56 +721,61 @@ html.theme-dark {
 
 .preview-response {
   margin-top: 16px;
-  border: 1px solid var(--card-border);
-  border-radius: 14px;
-  background: rgba(148, 163, 184, 0.08);
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-.preview-response-table-wrapper {
-  max-width: 100%;
-  overflow-x: auto;
+.preview-response-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-response-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.preview-response-scroll {
+  margin-top: 4px;
 }
 
 .preview-response-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 360px;
-  font-size: 0.85rem;
+  min-width: 640px;
 }
 
-.preview-response-table th,
-.preview-response-table td {
-  border: 1px solid var(--card-border);
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.preview-response-table th {
-  background: rgba(148, 163, 184, 0.12);
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.preview-response-table td:first-child {
-  width: 40px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
+.preview-response-index-header,
 .preview-response-actions-header {
   text-align: center;
 }
 
+.preview-response-index {
+  width: 56px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-response-body {
+  vertical-align: top;
+}
+
+.preview-response-table .preview-response-body-pre {
+  padding: 0;
+  background: transparent;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  max-height: 220px;
+}
+
+.preview-response-actions-header {
+  width: 160px;
+}
+
 .preview-response-send-cell {
-  width: 140px;
+  width: 160px;
   text-align: center;
   vertical-align: middle;
 }
@@ -778,7 +783,7 @@ html.theme-dark {
 .preview-response-send-button {
   width: 100%;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .preview-response-send-button .loader {
