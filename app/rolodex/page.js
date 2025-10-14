@@ -3242,6 +3242,17 @@ export default function Rolodex() {
         {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
           <div className="empty-footer">{emptyMessageMap[activePage]}</div>
         )}
+        <footer className="rolodex-legal" aria-label="Legal">
+          <a className="rolodex-legal-link" href="/privacy">
+            Application Privacy Policy
+          </a>
+          <span aria-hidden="true" className="rolodex-legal-divider">
+            •
+          </span>
+          <a className="rolodex-legal-link" href="/terms">
+            Application Terms of Service
+          </a>
+        </footer>
       </section>
     </div>
   );

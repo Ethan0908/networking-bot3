@@ -1456,6 +1456,35 @@ html.theme-dark {
   font-size: 0.9rem;
 }
 
+.rolodex-legal {
+  margin-top: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.rolodex-legal-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.rolodex-legal-link:hover,
+.rolodex-legal-link:focus-visible {
+  color: var(--text-primary);
+  text-decoration: underline;
+  outline: none;
+}
+
+.rolodex-legal-divider {
+  color: inherit;
+}
+
 pre.response-view {
   margin: 0;
   padding: 16px;
