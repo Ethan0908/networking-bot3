@@ -713,92 +713,9 @@ html.theme-dark {
   color: var(--text-primary);
 }
 
-.preview-json {
-  margin-top: 16px;
-  border: 1px solid var(--card-border);
-  border-radius: 14px;
-  background: rgba(148, 163, 184, 0.08);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.preview-json-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.preview-json-table-wrapper {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.preview-json-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 360px;
-  font-size: 0.85rem;
-}
-
-.preview-json-table th,
-.preview-json-table td {
-  border: 1px solid var(--card-border);
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.preview-json-table th {
-  background: rgba(148, 163, 184, 0.12);
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.preview-json-table td:first-child {
-  width: 40px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.preview-json-email,
-.preview-json-subject,
 .preview-response-email,
 .preview-response-subject {
   word-break: break-word;
-  color: var(--text-primary);
-}
-
-.preview-json-raw {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.preview-json-raw summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.preview-json-raw[open] summary {
-  margin-bottom: 6px;
-  color: var(--text-primary);
-}
-
-.preview-json-body {
-  margin: 0;
-  padding: 12px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.08);
-  border: 1px solid var(--card-border);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  font-family: var(--font-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-  white-space: pre;
-  overflow-x: auto;
   color: var(--text-primary);
 }
 
@@ -848,10 +765,34 @@ html.theme-dark {
   color: var(--text-secondary);
 }
 
-.preview-response-path {
-  font-family: var(--font-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-  white-space: nowrap;
-  color: var(--text-secondary);
+.preview-response-actions-header {
+  text-align: center;
+}
+
+.preview-response-send-cell {
+  width: 140px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.preview-response-send-button {
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+}
+
+.preview-response-send-button .loader {
+  width: 16px;
+  height: 16px;
+}
+
+.preview-response-send-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.preview-response-raw {
+  width: 100%;
 }
 
 .preview-body-pre {

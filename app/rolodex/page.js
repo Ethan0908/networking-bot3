@@ -586,6 +586,7 @@ export default function Rolodex() {
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
+  const [responseSending, setResponseSending] = useState({});
   const [sendingDraft, setSendingDraft] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
@@ -1281,140 +1282,6 @@ export default function Rolodex() {
     [aiResults]
   );
 
-  const requestPreview = useMemo(() => {
-    const trimmedSubject = subject.trim();
-    const trimmedBody = emailBody.trim();
-    if (!trimmedSubject || !trimmedBody) {
-      return null;
-    }
-    if (bodyMissingDraft || !hasValidToValue || invalidToChips.length > 0) {
-      return null;
-    }
-    if (!hasValidContactEmail) {
-      return null;
-    }
-
-    const contactsPayload = contactsWithEmails.map((contact) => {
-      const normalized = { ...contact };
-      const name = resolveContactName(contact);
-      if (name) {
-        if (!normalized.name) {
-          normalized.name = name;
-        }
-        if (!normalized.full_name && !normalized.fullName) {
-          normalized.full_name = name;
-        }
-      }
-      const emailValue = resolveContactEmail(contact);
-      if (emailValue && !normalized.email) {
-        normalized.email = emailValue;
-      }
-      delete normalized.__contactId;
-      return normalized;
-    });
-
-    if (contactsPayload.length === 0) {
-      return null;
-    }
-
-    const serialisedTo = Array.isArray(toChips)
-      ? toChips.filter((item) => item && typeof item === "string").join(", ")
-      : typeof toChips === "string"
-      ? toChips
-      : "";
-
-    const templatePayload = {
-      to: serialisedTo,
-      subject: trimmedSubject,
-      body: trimmedBody,
-      repeat: { over: "contacts", as: "contact" },
-    };
-
-    const studentContext = studentName || studentSchool
-      ? { name: studentName || null, school: studentSchool || null }
-      : null;
-
-    const dataset = {
-      student: studentContext,
-      role: campaignRole || null,
-      company: campaignCompany || null,
-      contacts: contactsPayload,
-    };
-
-    const rewriteGuide = buildRewriteGuide(trimmedBody);
-
-    const options = {
-      batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
-      dryRun: true,
-      rewriteGuide,
-    };
-
-    return {
-      action: "email",
-      template: { ...templatePayload, rewriteGuide },
-      dataset: { ...dataset, rewriteGuide },
-      options,
-    };
-  }, [
-    bodyMissingDraft,
-    campaignCompany,
-    campaignRole,
-    contactsWithEmails,
-    emailBody,
-    hasValidContactEmail,
-    hasValidToValue,
-    invalidToChips,
-    resolveContactEmail,
-    resolveContactName,
-    studentName,
-    studentSchool,
-    subject,
-    toChips,
-  ]);
-
-  const requestPreviewRows = useMemo(() => {
-    if (!requestPreview) {
-      return [];
-    }
-    const template = requestPreview.template || {};
-    const baseTo = template.to || "";
-    const baseSubject = template.subject || "";
-    const baseBody = template.body || "";
-    const contacts = Array.isArray(requestPreview.dataset?.contacts)
-      ? requestPreview.dataset.contacts
-      : [];
-    const rows =
-      contacts.length > 0
-        ? contacts.map((contact, index) => {
-            const emailValue =
-              resolveContactEmail(contact) ||
-              contact?.recipient ||
-              contact?.to ||
-              contact?.email ||
-              "";
-            return {
-              key: contact?.id ?? contact?.email ?? `contact-${index}`,
-              to: emailValue || baseTo,
-              subject: baseSubject,
-              body: baseBody,
-            };
-          })
-        : [
-            {
-              key: "template",
-              to: baseTo,
-              subject: baseSubject,
-              body: baseBody,
-            },
-          ];
-    return rows.filter((row) => row.to || row.subject || row.body);
-  }, [requestPreview, resolveContactEmail]);
-
-  const requestPreviewJson = useMemo(
-    () => (requestPreview ? JSON.stringify(requestPreview, null, 2) : ""),
-    [requestPreview]
-  );
-
   const responseEmailRows = useMemo(
     () => extractRewriteResponseEmails(rewriteResponse),
     [rewriteResponse]
@@ -1474,6 +1341,10 @@ export default function Rolodex() {
       }
     }
   }, [emailContacts, previewContactId, resolveContactId]);
+
+  useEffect(() => {
+    setResponseSending({});
+  }, [rewriteResponse]);
 
   const handlePreviewTemplate = useCallback(() => {
     const contactCandidate = previewContact || contactsWithEmails[0] || emailContacts[0];
@@ -1892,6 +1763,61 @@ export default function Rolodex() {
       }
     },
     [aiResults, gmailStatus, pushToast]
+  );
+
+  const handleSendResponseRow = useCallback(
+    async (index) => {
+      const row = responseEmailRows[index];
+      if (!row) {
+        pushToast("error", "Unable to locate this response.");
+        return;
+      }
+      const recipient = (row.email || "").trim();
+      if (!recipient) {
+        pushToast("error", "This response does not include an email address.");
+        return;
+      }
+      const subjectValue = String(row.subject ?? "");
+      const bodyValue = String(row.body ?? row.json ?? "");
+      setResponseSending((prev) => ({ ...prev, [index]: true }));
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: recipient,
+            subject: subjectValue,
+            html: bodyValue,
+          }),
+        });
+        let errorMessage = "";
+        if (!response.ok) {
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload === "object" && payload.error) {
+              errorMessage = String(payload.error);
+            }
+          } catch {
+            errorMessage = response.statusText || "Failed to send email.";
+          }
+          throw new Error(errorMessage || "Failed to send email.");
+        }
+        pushToast("success", `Email sent to ${recipient}.`);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to send email.";
+        pushToast("error", message);
+      } finally {
+        setResponseSending((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    },
+    [pushToast, responseEmailRows]
   );
 
   const handleDownloadResults = useCallback(
@@ -2892,82 +2818,86 @@ export default function Rolodex() {
                       </div>
                     </div>
                     <pre className="preview-body">{previewContent.body || ""}</pre>
-                    {(requestPreviewRows.length > 0 || requestPreviewJson) && (
-                      <div className="preview-json">
-                        <div className="preview-json-header">
-                          <span className="preview-meta-label">Request JSON</span>
-                        </div>
-                        {requestPreviewRows.length > 0 ? (
-                          <div className="preview-json-table-wrapper">
-                            <table className="preview-json-table">
-                              <thead>
-                                <tr>
-                                  <th scope="col">#</th>
-                                  <th scope="col">Email</th>
-                                  <th scope="col">Subject</th>
-                                  <th scope="col">Body</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {requestPreviewRows.map((row, rowIndex) => (
-                                  <tr key={row.key ?? rowIndex}>
-                                    <td>{rowIndex + 1}</td>
-                                    <td className="preview-json-email">{row.to || "—"}</td>
-                                    <td className="preview-json-subject">{row.subject || "—"}</td>
-                                    <td>
-                                      <pre className="preview-body-pre">{row.body || "—"}</pre>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : null}
-                        {requestPreviewJson ? (
-                          <details className="preview-json-raw">
-                            <summary>View raw payload</summary>
-                            <pre className="preview-json-body">{requestPreviewJson}</pre>
-                          </details>
-                        ) : null}
-                      </div>
-                    )}
                   </div>
                 )}
                 {rewriteResponse && (
                   <div className="preview-response" aria-live="polite">
                     <span className="preview-meta-label">Response JSON</span>
-                      {responseEmailRows.length > 0 ? (
-                        <div className="preview-response-table-wrapper">
-                          <table className="preview-response-table">
-                            <thead>
-                              <tr>
-                                <th scope="col">#</th>
-                                <th scope="col">Location</th>
-                                <th scope="col">Email</th>
-                                <th scope="col">Subject</th>
-                                <th scope="col">Body</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {responseEmailRows.map((row, index) => {
-                                const bodyValue = row.body || row.json || "";
-                                return (
-                                  <tr key={`${row.path}-${index}`}>
-                                    <td>{index + 1}</td>
-                                    <td className="preview-response-path">{row.path}</td>
-                                    <td className="preview-response-email">{row.email || "—"}</td>
-                                    <td className="preview-response-subject">{row.subject || "—"}</td>
-                                    <td>
-                                      <pre className="preview-body-pre">{bodyValue || "—"}</pre>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <pre className="preview-json-body">{rewriteResponseJson}</pre>
+                    {responseEmailRows.length > 0 ? (
+                      <div className="preview-response-table-wrapper">
+                        <table className="preview-response-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">#</th>
+                              <th scope="col">Email</th>
+                              <th scope="col">Subject</th>
+                              <th scope="col">Body</th>
+                              <th scope="col" className="preview-response-actions-header">
+                                Send
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {responseEmailRows.map((row, index) => {
+                              const rowKey = row.path ? `${row.path}-${index}` : index;
+                              const recipientValue =
+                                typeof row.email === "string"
+                                  ? row.email.trim()
+                                  : row.email != null
+                                  ? String(row.email)
+                                  : "";
+                              const subjectValue =
+                                typeof row.subject === "string"
+                                  ? row.subject
+                                  : row.subject != null
+                                  ? String(row.subject)
+                                  : "";
+                              const bodySource = row.body ?? row.json ?? "";
+                              const bodyValue =
+                                typeof bodySource === "string"
+                                  ? bodySource
+                                  : bodySource != null
+                                  ? String(bodySource)
+                                  : "";
+                              const hasRecipient = recipientValue.length > 0;
+                              const isSendingRow = Boolean(responseSending[index]);
+                              const sendDisabled = isSendingRow || !hasRecipient;
+                              const buttonTitle = hasRecipient
+                                ? undefined
+                                : "Response is missing an email address.";
+                              return (
+                                <tr key={rowKey}>
+                                  <td>{index + 1}</td>
+                                  <td className="preview-response-email">{recipientValue || "—"}</td>
+                                  <td className="preview-response-subject">{subjectValue || "—"}</td>
+                                  <td>
+                                    <pre className="preview-body-pre">{bodyValue || "—"}</pre>
+                                  </td>
+                                  <td className="preview-response-send-cell">
+                                    <button
+                                      type="button"
+                                      className="button secondary small preview-response-send-button"
+                                      onClick={() => handleSendResponseRow(index)}
+                                      disabled={sendDisabled}
+                                      aria-busy={isSendingRow}
+                                      title={buttonTitle}
+                                    >
+                                      {isSendingRow ? (
+                                        <IconLoader />
+                                      ) : (
+                                        <IconMail className="preview-response-send-icon" />
+                                      )}
+                                      {isSendingRow ? "Sending…" : "Send"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <pre className="preview-body-pre preview-response-raw">{rewriteResponseJson}</pre>
                     )}
                   </div>
                 )}
