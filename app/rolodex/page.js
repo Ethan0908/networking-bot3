@@ -605,6 +605,7 @@ export default function Rolodex() {
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
+  const [manualEmailRows, setManualEmailRows] = useState([]);
   const [responseSending, setResponseSending] = useState({});
   const [responseBodyEdits, setResponseBodyEdits] = useState({});
   const [sendingDraft, setSendingDraft] = useState(null);
@@ -1350,15 +1351,21 @@ export default function Rolodex() {
     [aiResults],
   );
 
-  const responseEmailRows = useMemo(
-    () => extractRewriteResponseEmails(rewriteResponse),
-    [rewriteResponse],
-  );
+  const hasManualRows = manualEmailRows.length > 0;
+
+  const responseEmailRows = useMemo(() => {
+    if (manualEmailRows.length > 0) {
+      return manualEmailRows;
+    }
+    return extractRewriteResponseEmails(rewriteResponse);
+  }, [manualEmailRows, rewriteResponse]);
 
   const rewriteResponseJson = useMemo(
     () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
     [rewriteResponse],
   );
+
+  const showResponseSection = hasManualRows || Boolean(rewriteResponse);
 
   const templateReady = useMemo(() => {
     const trimmedSubject = subject.trim();
@@ -1415,7 +1422,7 @@ export default function Rolodex() {
   useEffect(() => {
     setResponseSending({});
     setResponseBodyEdits({});
-  }, [rewriteResponse]);
+  }, [manualEmailRows, rewriteResponse]);
 
   const handlePreviewTemplate = useCallback(() => {
     const contactCandidate =
@@ -1579,6 +1586,7 @@ export default function Rolodex() {
           "Failed to generate drafts.";
         throw new Error(message);
       }
+      setManualEmailRows([]);
       const emails = Array.isArray(data?.emails) ? data.emails : [];
       if (emails.length === 0) {
         setAiResults([]);
@@ -1755,13 +1763,32 @@ export default function Rolodex() {
       };
     });
 
+    setManualEmailRows([]);
     if (results.length === 0) {
       pushToast("info", "Load at least one contact with a valid email.");
       return;
     }
 
+    const manualRows = results.map((item) => {
+      const emailValue = item.to ?? "";
+      const subjectValue = item.subject ?? "";
+      const bodyValue = item.body ?? "";
+      return {
+        email: emailValue,
+        subject: subjectValue,
+        body: bodyValue,
+        json: {
+          to: emailValue,
+          subject: subjectValue,
+          body: bodyValue,
+        },
+      };
+    });
+
     setRewriteResponse(null);
-    setAiResults(results);
+    setManualEmailRows([]);
+    setManualEmailRows(manualRows);
+    setAiResults([]);
     setSendResults([]);
     setSendingDraft(null);
     pushToast(
@@ -3045,7 +3072,7 @@ export default function Rolodex() {
                       onClick={handleBuildTemplateEmails}
                       disabled={!canBuildTemplate}
                     >
-                      Fill placeholders
+                      Edit manually
                     </button>
                     <button
                       type="button"
@@ -3091,7 +3118,7 @@ export default function Rolodex() {
                     </pre>
                   </div>
                 )}
-                {rewriteResponse && (
+                {showResponseSection && (
                   <div className="preview-response" aria-live="polite">
                     <div className="preview-response-toolbar">
                       <span className="preview-response-title">Response</span>
@@ -3225,16 +3252,16 @@ export default function Rolodex() {
                           </tbody>
                         </table>
                       </div>
-                    ) : (
+                    ) : rewriteResponse ? (
                       <pre className="preview-body-pre preview-response-raw">
                         {rewriteResponseJson}
                       </pre>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>
 
-              {aiResults.length > 0 && (
+              {!hasManualRows && aiResults.length > 0 && (
                 <div className="ai-results-panel">
                   <div className="ai-results-header">
                     <h3>AI Results</h3>
