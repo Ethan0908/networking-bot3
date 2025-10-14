@@ -760,40 +760,57 @@ html.theme-dark {
 
 .preview-response-body {
   vertical-align: top;
+  width: 48%;
+  min-width: 320px;
 }
 
-.preview-response-table .preview-response-body-pre {
-  padding: 0;
-  background: transparent;
+.preview-response-body-input {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--input-background);
+  color: var(--text-primary);
+  font: inherit;
   font-size: 0.9rem;
   line-height: 1.5;
-  max-height: 220px;
+  resize: vertical;
+  box-shadow: inset var(--shadow-inner);
+}
+
+.preview-response-body-input:focus-visible {
+  outline: none;
+  border-color: var(--input-border-strong);
+  background: var(--input-focus-background);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 .preview-response-actions-header {
-  width: 160px;
+  width: 140px;
 }
 
 .preview-response-send-cell {
-  width: 160px;
+  width: 140px;
   text-align: center;
   vertical-align: middle;
 }
 
 .preview-response-send-button {
-  width: 100%;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 8px 14px;
+  min-width: 0;
 }
 
 .preview-response-send-button .loader {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .preview-response-send-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .preview-response-raw {

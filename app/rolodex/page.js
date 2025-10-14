@@ -587,6 +587,7 @@ export default function Rolodex() {
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
   const [responseSending, setResponseSending] = useState({});
+  const [responseBodyEdits, setResponseBodyEdits] = useState({});
   const [sendingDraft, setSendingDraft] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
@@ -1344,6 +1345,7 @@ export default function Rolodex() {
 
   useEffect(() => {
     setResponseSending({});
+    setResponseBodyEdits({});
   }, [rewriteResponse]);
 
   const handlePreviewTemplate = useCallback(() => {
@@ -1778,7 +1780,14 @@ export default function Rolodex() {
         return;
       }
       const subjectValue = String(row.subject ?? "");
-      const bodyValue = String(row.body ?? row.json ?? "");
+      const bodySource = row.body ?? row.json ?? "";
+      const originalBody =
+        typeof bodySource === "string"
+          ? bodySource
+          : bodySource != null
+          ? String(bodySource)
+          : "";
+      const bodyValue = responseBodyEdits[index] ?? originalBody;
       setResponseSending((prev) => ({ ...prev, [index]: true }));
       try {
         const response = await fetch("/api/send-email", {
@@ -1817,7 +1826,7 @@ export default function Rolodex() {
         });
       }
     },
-    [pushToast, responseEmailRows]
+    [pushToast, responseBodyEdits, responseEmailRows]
   );
 
   const handleDownloadResults = useCallback(
@@ -2861,12 +2870,17 @@ export default function Rolodex() {
                                   ? String(row.subject)
                                   : "";
                               const bodySource = row.body ?? row.json ?? "";
-                              const bodyValue =
+                              const originalBodyValue =
                                 typeof bodySource === "string"
                                   ? bodySource
                                   : bodySource != null
                                   ? String(bodySource)
                                   : "";
+                              const editedBodyValue = responseBodyEdits[index];
+                              const bodyValue =
+                                typeof editedBodyValue === "string"
+                                  ? editedBodyValue
+                                  : originalBodyValue;
                               const hasRecipient = recipientValue.length > 0;
                               const isSendingRow = Boolean(responseSending[index]);
                               const sendDisabled = isSendingRow || !hasRecipient;
@@ -2879,9 +2893,33 @@ export default function Rolodex() {
                                   <td className="preview-response-email">{recipientValue || "—"}</td>
                                   <td className="preview-response-subject">{subjectValue || "—"}</td>
                                   <td className="preview-response-body">
-                                    <pre className="preview-body-pre preview-response-body-pre">
-                                      {bodyValue || "—"}
-                                    </pre>
+                                    <textarea
+                                      className="preview-response-body-input"
+                                      value={bodyValue}
+                                      aria-label={
+                                        subjectValue
+                                          ? `Email body for ${subjectValue}`
+                                          : `Email body for response ${index + 1}`
+                                      }
+                                      onChange={(event) => {
+                                        const nextValue = event.target.value;
+                                        setResponseBodyEdits((prev) => {
+                                          if (nextValue === originalBodyValue) {
+                                            if (!(index in prev)) {
+                                              return prev;
+                                            }
+                                            const next = { ...prev };
+                                            delete next[index];
+                                            return next;
+                                          }
+                                          return {
+                                            ...prev,
+                                            [index]: nextValue,
+                                          };
+                                        });
+                                      }}
+                                      placeholder="Response body"
+                                    />
                                   </td>
                                   <td className="preview-response-send-cell">
                                     <button
