@@ -2,9 +2,9 @@ import Link from "next/link";
 import "../legal/legal.css";
 
 export const metadata = {
-  title: "Application Privacy Policy",
+  title: "Privacy Policy",
   description:
-    "Learn how Application collects, uses, and protects your personal information.",
+    "Learn how we collect, use, and protect your personal information.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -12,12 +12,12 @@ export default function PrivacyPolicyPage() {
     <div className="legal-page">
       <main className="legal-container">
         <div className="legal-header">
-          <h1>Application Privacy Policy</h1>
-          <p className="legal-updated">Last updated: July 1, 2024</p>
+          <h1>Privacy Policy</h1>
+          <p className="legal-updated">Last updated: October 10, 2025</p>
           <p>
-            This Privacy Policy explains how Application ("we", "us", or "our")
-            collects, uses, and safeguards your information when you use the
-            Rolodex tools and related services.
+            This Privacy Policy explains how we ("we", "us", or "our") collect,
+            use, and safeguard your information when you use our outreach tools
+            and related services.
           </p>
         </div>
 
@@ -26,12 +26,12 @@ export default function PrivacyPolicyPage() {
           <p>We collect information in the following ways:</p>
           <ul>
             <li>
-              <strong>Account information</strong> provided when you sign in with
-              a connected email provider.
+              <strong>Account information</strong> provided when you sign in
+              with a connected email provider.
             </li>
             <li>
               <strong>Contact records</strong> that you choose to sync or import
-              into the Rolodex workspace.
+              into your workspace.
             </li>
             <li>
               <strong>Usage data</strong> that helps us understand how features
@@ -44,8 +44,10 @@ export default function PrivacyPolicyPage() {
           <h2>How We Use Information</h2>
           <p>We use your information to:</p>
           <ul>
-            <li>Provide and maintain the Rolodex experience.</li>
-            <li>Generate outreach drafts and deliver requested communications.</li>
+            <li>Provide and maintain the service.</li>
+            <li>
+              Generate outreach drafts and deliver requested communications.
+            </li>
             <li>Improve reliability, security, and support.</li>
             <li>Comply with legal obligations.</li>
           </ul>
@@ -56,8 +58,8 @@ export default function PrivacyPolicyPage() {
           <p>
             We do not sell your personal information. We only share data with
             service providers who help operate the platform (for example,
-            authentication or email delivery partners) and only when necessary to
-            provide the requested services.
+            authentication or email delivery partners) and only when necessary
+            to provide the requested services.
           </p>
         </section>
 
@@ -76,8 +78,11 @@ export default function PrivacyPolicyPage() {
             <li>Update or delete saved templates and contact records.</li>
             <li>Disconnect connected email accounts at any time.</li>
             <li>
-              Contact us at <a href="mailto:support@example.com">support@example.com</a> to
-              access, correct, or delete your information.
+              Contact us at{" "}
+              <a href="mailto:ethanyubowang@gmail.com">
+                ethanyubowang@gmail.com
+              </a>{" "}
+              to access, correct, or delete your information.
             </li>
           </ul>
         </section>
@@ -86,12 +91,13 @@ export default function PrivacyPolicyPage() {
           <h2>Contact Us</h2>
           <p>
             If you have questions about this Privacy Policy, contact us at{" "}
-            <a href="mailto:privacy@example.com">privacy@example.com</a>.
+            <a href="mailto:ethanyubowang@gmail.com">ethanyubowang@gmail.com</a>
+            .
           </p>
         </section>
 
         <Link href="/rolodex" className="legal-back-link">
-          ← Back to Rolodex
+          ← Back to the workspace
         </Link>
       </main>
     </div>

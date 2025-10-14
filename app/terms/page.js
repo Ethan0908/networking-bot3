@@ -2,8 +2,8 @@ import Link from "next/link";
 import "../legal/legal.css";
 
 export const metadata = {
-  title: "Application Terms of Service",
-  description: "Read the terms and conditions for using Application.",
+  title: "Terms of Service",
+  description: "Read the terms and conditions for using our service.",
 };
 
 export default function TermsOfServicePage() {
@@ -11,17 +11,17 @@ export default function TermsOfServicePage() {
     <div className="legal-page">
       <main className="legal-container">
         <div className="legal-header">
-          <h1>Application Terms of Service</h1>
-          <p className="legal-updated">Last updated: July 1, 2024</p>
+          <h1>Terms of Service</h1>
+          <p className="legal-updated">Last updated: October 10, 2025</p>
           <p>
-            These Terms of Service ("Terms") govern your use of Application and
-            the Rolodex tools. By accessing or using the service, you agree to be
-            bound by these Terms.
+            These Terms of Service ("Terms") govern your use of our tools and
+            services. By accessing or using the service, you agree to be bound
+            by these Terms.
           </p>
         </div>
 
         <section className="legal-section">
-          <h2>Using Application</h2>
+          <h2>Using the Service</h2>
           <ul>
             <li>You must be at least 18 years old to use the service.</li>
             <li>
@@ -29,8 +29,8 @@ export default function TermsOfServicePage() {
               for all activity that occurs under your account.
             </li>
             <li>
-              You agree not to misuse the service, including attempting to access
-              systems or data without authorization.
+              You agree not to misuse the service, including attempting to
+              access systems or data without authorization.
             </li>
           </ul>
         </section>
@@ -38,8 +38,8 @@ export default function TermsOfServicePage() {
         <section className="legal-section">
           <h2>Content and Communications</h2>
           <p>
-            You retain ownership of the content you upload or generate. You grant
-            us a license to process that content solely for providing the
+            You retain ownership of the content you upload or generate. You
+            grant us a license to process that content solely for providing the
             services you request, such as drafting and sending communications.
           </p>
         </section>
@@ -47,7 +47,7 @@ export default function TermsOfServicePage() {
         <section className="legal-section">
           <h2>Third-Party Services</h2>
           <p>
-            Application may integrate with third-party services (such as email
+            We may integrate with third-party services (such as email
             providers). Your use of those services is governed by their
             respective terms and policies.
           </p>
@@ -85,12 +85,13 @@ export default function TermsOfServicePage() {
           <h2>Contact</h2>
           <p>
             Questions about these Terms can be sent to{" "}
-            <a href="mailto:legal@example.com">legal@example.com</a>.
+            <a href="mailto:ethanyubowang@gmail.com">ethanyubowang@gmail.com</a>
+            .
           </p>
         </section>
 
         <Link href="/rolodex" className="legal-back-link">
-          ← Back to Rolodex
+          ← Back to the workspace
         </Link>
       </main>
     </div>
