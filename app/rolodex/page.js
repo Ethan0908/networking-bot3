@@ -1,6 +1,7 @@
 "use client";
 import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CoverLetterWorkspace } from "../cover-letter/workspace";
 import "./rolodex.css";
 
 function IconLoader(props) {
@@ -2384,6 +2385,7 @@ export default function Rolodex() {
     { id: "view", label: "View" },
     { id: "update", label: "Update" },
     { id: "email", label: "Email" },
+    { id: "cover", label: "Cover letter" },
   ];
 
   const viewRecords = useMemo(() => {
@@ -2489,9 +2491,6 @@ export default function Rolodex() {
             <p>Track contacts and follow-ups.</p>
           </div>
           <div className="header-actions">
-            <a className="header-link" href="/cover-letter">
-              Cover letters
-            </a>
             <button
               type="button"
               className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
@@ -3474,6 +3473,12 @@ export default function Rolodex() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {activePage === "cover" && (
+            <div role="tabpanel" id="cover-panel" aria-labelledby="cover-tab">
+              <CoverLetterWorkspace variant="embedded" />
             </div>
           )}
         </div>
