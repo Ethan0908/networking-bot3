@@ -847,19 +847,8 @@ html.theme-dark {
   overflow: auto;
   font-size: 0.8rem;
   line-height: 1.45;
-  font-family: var(
-    --font-monospace,
-    "SFMono-Regular",
-    Menlo,
-    Monaco,
-    Consolas,
-    "Liberation Mono",
-    "Courier New",
-    monospace
-  );
+  font-family: var(--font-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
   color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .ai-results-panel {
@@ -1234,15 +1223,6 @@ html.theme-dark {
   padding: 8px 14px;
   font-size: 0.85rem;
   border-radius: 10px;
-}
-
-.gmail-send-button {
-  gap: 6px;
-}
-
-.gmail-send-icon {
-  width: 16px;
-  height: 16px;
 }
 
 .loader {
