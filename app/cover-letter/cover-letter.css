@@ -1,5 +1,6 @@
 .cover-letter-page {
   position: relative;
+  background: var(--surface-background);
 }
 
 .cover-letter-card {
@@ -86,7 +87,6 @@
 }
 
 .cover-letter-info-grid label,
-.cover-letter-profile-grid label,
 .cover-letter-textarea,
 .cover-letter-file,
 .cover-letter-draft-editor,
@@ -99,7 +99,6 @@
 }
 
 .cover-letter-info-grid input,
-.cover-letter-profile-grid input,
 .cover-letter-textarea textarea,
 .change-request textarea,
 .cover-letter-draft-editor textarea {
@@ -122,8 +121,7 @@
 .cover-letter-textarea textarea:focus,
 .change-request textarea:focus,
 .cover-letter-draft-editor textarea:focus,
-.cover-letter-info-grid input:focus,
-.cover-letter-profile-grid input:focus {
+.cover-letter-info-grid input:focus {
   outline: none;
   border-color: var(--input-border-strong);
   background: var(--input-focus-background);
@@ -132,8 +130,7 @@
 
 .cover-letter-textarea textarea::placeholder,
 .change-request textarea::placeholder,
-.cover-letter-info-grid input::placeholder,
-.cover-letter-profile-grid input::placeholder {
+.cover-letter-info-grid input::placeholder {
   color: var(--input-placeholder);
 }
 
@@ -195,41 +192,6 @@
   color: var(--danger);
   font-weight: 600;
   font-size: 0.9rem;
-}
-
-.cover-letter-profile {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-top: 1px solid var(--card-border);
-  padding-top: 16px;
-}
-
-.cover-letter-profile-grid {
-  display: grid;
-  gap: 12px;
-}
-
-@media (min-width: 720px) {
-  .cover-letter-profile-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.cover-letter-submission-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-}
-
-.cover-letter-submission-meta code {
-  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.85rem;
-  background: rgba(15, 23, 42, 0.08);
-  padding: 2px 6px;
-  border-radius: 6px;
 }
 
 .draft-toolbar {

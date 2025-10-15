@@ -167,21 +167,6 @@ function readFileAsBase64(file) {
   });
 }
 
-function formatDate(value) {
-  if (!value) return "—";
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat("en", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(date);
-  } catch (error) {
-    console.warn("Unable to format date", error);
-    return String(value);
-  }
-}
-
 function formatSize(bytes) {
   if (!bytes || typeof bytes !== "number") return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -192,15 +177,11 @@ function formatSize(bytes) {
 export function CoverLetterWorkspace({ variant = "standalone" }) {
   const [toasts, setToasts] = useState([]);
   const [creating, setCreating] = useState(false);
-  const [polling, setPolling] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [changingDraft, setChangingDraft] = useState(false);
   const [approving, setApproving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [loadingSimilarity, setLoadingSimilarity] = useState(false);
 
   const [submissionId, setSubmissionId] = useState("");
   const [submissionStatus, setSubmissionStatus] = useState(null);
@@ -222,16 +203,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
 
   const [approvalResult, setApprovalResult] = useState(null);
   const [exportResult, setExportResult] = useState(null);
-  const [profileForm, setProfileForm] = useState({
-    programme: "",
-    graduationDate: "",
-    skills: "",
-    achievements: "",
-    tone: "",
-  });
-  const [profileId, setProfileId] = useState("");
-  const [history, setHistory] = useState([]);
-  const [similarity, setSimilarity] = useState(null);
 
   const pushToast = useCallback((type, message) => {
     const id = Math.random().toString(36).slice(2);
@@ -247,10 +218,29 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
 
   const callCoverLetter = useCallback(
     async (operation, payload = {}, includeSubmission = true) => {
+      const context = {
+        name: studentName,
+        email: studentEmail,
+        resumeText,
+        resumeFile: resumeFile
+          ? {
+              name: resumeFile.name,
+              type: resumeFile.type,
+              size: resumeFile.size,
+              base64: resumeFile.base64,
+            }
+          : null,
+        jobUrl,
+        role,
+        tone,
+        draftContent,
+      };
+
       const requestBody = {
         action: "Cover Letter",
         operation,
         ...(includeSubmission && submissionId ? { submissionId } : {}),
+        context,
         ...payload,
       };
 
@@ -281,7 +271,17 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
 
       return data;
     },
-    [submissionId]
+    [
+      submissionId,
+      studentName,
+      studentEmail,
+      resumeText,
+      resumeFile,
+      jobUrl,
+      role,
+      tone,
+      draftContent,
+    ]
   );
 
   const handleResumeFileChange = async (event) => {
@@ -320,7 +320,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
     setChangeMode("apply");
     setApprovalResult(null);
     setExportResult(null);
-    setSimilarity(null);
   };
 
   const handleCreateSubmission = async () => {
@@ -369,41 +368,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
       pushToast("error", error.message || "Unable to create submission.");
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handlePollStatus = async () => {
-    if (!submissionId) {
-      pushToast("info", "Create a submission first.");
-      return;
-    }
-    setPolling(true);
-    try {
-      for (let attempt = 0; attempt < 24; attempt += 1) {
-        const data = await callCoverLetter("pollStatus");
-        const status =
-          data?.status ??
-          data?.state ??
-          (typeof data === "string" ? data : null) ??
-          data;
-        setSubmissionStatus(status);
-        if (Array.isArray(data?.warnings)) {
-          setStatusWarnings(data.warnings);
-        }
-        const normalized =
-          (typeof status === "string" && status.toLowerCase()) ||
-          (typeof status === "object" &&
-            (status.state || status.status || "").toLowerCase());
-        if (normalized && ["ready", "error"].includes(normalized)) {
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-      }
-    } catch (error) {
-      console.error("Failed to poll status", error);
-      pushToast("error", error.message || "Unable to poll submission status.");
-    } finally {
-      setPolling(false);
     }
   };
 
@@ -526,35 +490,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
     }
   };
 
-  const handleSaveProfile = async () => {
-    setSavingProfile(true);
-    try {
-      const data = await callCoverLetter(
-        "saveProfile",
-        {
-          profile: {
-            ...profileForm,
-            tone: profileForm.tone || tone,
-          },
-        },
-        false
-      );
-      const id =
-        data?.profileId ?? data?.profile_id ?? data?.id ?? data?.profile?.id ?? "";
-      if (id) {
-        setProfileId(String(id));
-        pushToast("success", "Profile saved for future submissions.");
-      } else {
-        pushToast("info", "Profile saved.");
-      }
-    } catch (error) {
-      console.error("Failed to save profile", error);
-      pushToast("error", error.message || "Unable to save profile.");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
   const handleDeleteData = async () => {
     if (!submissionId) {
       pushToast("info", "Create a submission first.");
@@ -571,39 +506,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
       pushToast("error", error.message || "Unable to delete submission data.");
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleListHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const data = await callCoverLetter("listSubmissions", {}, false);
-      const items = Array.isArray(data) ? data : data?.submissions || [];
-      setHistory(items);
-      pushToast("success", "Submission history loaded.");
-    } catch (error) {
-      console.error("Failed to load submission history", error);
-      pushToast("error", error.message || "Unable to load submission history.");
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const handlePreviewSimilarity = async () => {
-    if (!submissionId) {
-      pushToast("info", "Create a submission first.");
-      return;
-    }
-    setLoadingSimilarity(true);
-    try {
-      const data = await callCoverLetter("matchRequirements");
-      setSimilarity(data);
-      pushToast("success", "Similarity preview ready.");
-    } catch (error) {
-      console.error("Failed to preview similarity", error);
-      pushToast("error", error.message || "Unable to preview similarity.");
-    } finally {
-      setLoadingSimilarity(false);
     }
   };
 
@@ -743,36 +645,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
                 {creating ? <IconLoader /> : null}
                 {creating ? "Creating…" : "Draft with AI"}
               </button>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={handlePollStatus}
-                disabled={!submissionId || polling}
-                aria-busy={polling}
-              >
-                {polling ? <IconLoader /> : null}
-                {polling ? "Checking…" : "Check status"}
-              </button>
-              <button
-                type="button"
-                className="button tertiary"
-                onClick={handleListHistory}
-                disabled={loadingHistory}
-                aria-busy={loadingHistory}
-              >
-                {loadingHistory ? <IconLoader /> : null}
-                {loadingHistory ? "Loading…" : "Submission history"}
-              </button>
-              <button
-                type="button"
-                className="button tertiary"
-                onClick={handlePreviewSimilarity}
-                disabled={!submissionId || loadingSimilarity}
-                aria-busy={loadingSimilarity}
-              >
-                {loadingSimilarity ? <IconLoader /> : null}
-                {loadingSimilarity ? "Reviewing…" : "Preview similarity"}
-              </button>
             </div>
 
             <dl className="cover-letter-meta">
@@ -793,101 +665,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
                 ))}
               </ul>
             )}
-
-            <div className="cover-letter-profile">
-              <div className="section-heading">
-                <h4>Save for later</h4>
-                <p>Keep defaults for future cover letter submissions.</p>
-              </div>
-              <div className="cover-letter-profile-grid">
-                <label>
-                  <span>Programme</span>
-                  <input
-                    className="text-input"
-                    type="text"
-                    value={profileForm.programme}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        programme: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Graduation date</span>
-                  <input
-                    className="text-input"
-                    type="text"
-                    value={profileForm.graduationDate}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        graduationDate: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Skills</span>
-                  <input
-                    className="text-input"
-                    type="text"
-                    value={profileForm.skills}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        skills: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Achievements</span>
-                  <input
-                    className="text-input"
-                    type="text"
-                    value={profileForm.achievements}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        achievements: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Preferred tone</span>
-                  <input
-                    className="text-input"
-                    type="text"
-                    value={profileForm.tone}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        tone: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="cover-letter-actions">
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile}
-                  aria-busy={savingProfile}
-                >
-                  {savingProfile ? <IconLoader /> : null}
-                  {savingProfile ? "Saving…" : "Save profile"}
-                </button>
-                <div className="cover-letter-submission-meta">
-                  <span className="meta-label">Profile ID</span>
-                  <code>{profileId || "—"}</code>
-                </div>
-              </div>
-            </div>
           </section>
 
           <section
@@ -1048,59 +825,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
               </div>
             )}
 
-            {history.length > 0 && (
-              <div className="table-scroll">
-                <table className="view-table">
-                  <caption className="view-table-caption">Recent submissions</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Role</th>
-                      <th scope="col">Company</th>
-                      <th scope="col">Created</th>
-                      <th scope="col">State</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((item, index) => (
-                      <tr key={item?.id ?? index}>
-                        <td>{item?.role ?? "—"}</td>
-                        <td>{item?.company ?? "—"}</td>
-                        <td>{formatDate(item?.createdAt ?? item?.created_at)}</td>
-                        <td>{item?.state ?? item?.status ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {similarity && (
-              <div className="table-scroll">
-                <table className="view-table">
-                  <caption className="view-table-caption">Similarity preview</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Matched</th>
-                      <th scope="col">Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.isArray(similarity?.matches) && similarity.matches.length > 0 ? (
-                      similarity.matches.map((match, index) => (
-                        <tr key={`match-${index}`}>
-                          <td>{match?.label ?? match?.name ?? "Match"}</td>
-                          <td>{match?.detail ?? match?.value ?? "—"}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={2}>No similarity details provided.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </section>
         </div>
       </section>
