@@ -24,10 +24,13 @@ async function parseBody(req) {
 }
 
 async function proxy(req) {
-  const base = process.env.COVER_LETTER_WEBHOOK_URL?.replace(/\/+$/, "");
+  // Support both the new COVER_LETTER_WEBHOOK_URL and the legacy N8N_WEBHOOK_URL
+  const envBase =
+    process.env.COVER_LETTER_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL || "";
+  const base = envBase.replace(/\/+$/, "");
   if (!base)
     return NextResponse.json(
-      { error: "Missing COVER_LETTER_WEBHOOK_URL" },
+      { error: "Missing COVER_LETTER_WEBHOOK_URL or N8N_WEBHOOK_URL" },
       { status: 500 }
     );
 
