@@ -103,7 +103,7 @@ const SAMPLE_CONTACT_ID = String(
   SAMPLE_CONTACT_RECORD.contact_id ??
     SAMPLE_CONTACT_RECORD.local_id ??
     SAMPLE_CONTACT_RECORD.id ??
-    1
+    1,
 );
 
 const TEMPLATE_STORAGE_KEY = "rolodex-email-template";
@@ -130,6 +130,15 @@ const BUILT_IN_PLACEHOLDERS = [
   { id: "draft", label: "[draft]", token: "{{draft}}" },
 ];
 
+const RESPONSE_RECIPIENT_KEYS = [
+  "to",
+  "recipient",
+  "recipients",
+  "email",
+  "address",
+];
+const RESPONSE_SUBJECT_KEYS = ["subject", "title", "headline"];
+const RESPONSE_CONTENT_KEYS = ["body", "html", "text", "content", "message"];
 const RESPONSE_RECIPIENT_KEYS = ["to", "recipient", "recipients", "email", "address"];
 const RESPONSE_CONTENT_KEYS = ["subject", "body", "html", "text", "content", "message"];
 
@@ -310,17 +319,21 @@ function replaceTemplateTokens(template, context, options = {}) {
   if (!template || typeof template !== "string") {
     return "";
   }
-  const { preserveDraft = false, draftReplacement = DEFAULT_PREVIEW_MESSAGE } = options;
-  return template.replace(/{{\s*([^{}\s]+(?:\.[^{}\s]+)*)\s*}}/g, (match, path) => {
-    if (path === "draft") {
-      return preserveDraft ? match : draftReplacement;
-    }
-    const value = getValueAtPath(context, path);
-    if (value == null) {
-      return match;
-    }
-    return String(value);
-  });
+  const { preserveDraft = false, draftReplacement = DEFAULT_PREVIEW_MESSAGE } =
+    options;
+  return template.replace(
+    /{{\s*([^{}\s]+(?:\.[^{}\s]+)*)\s*}}/g,
+    (match, path) => {
+      if (path === "draft") {
+        return preserveDraft ? match : draftReplacement;
+      }
+      const value = getValueAtPath(context, path);
+      if (value == null) {
+        return match;
+      }
+      return String(value);
+    },
+  );
 }
 
 function resolveContactEmail(contact) {
@@ -485,14 +498,20 @@ export default function Rolodex() {
   const [gmailStatus, setGmailStatus] = useState(() =>
     authStatus === "authenticated" && authSession?.user
       ? "connected"
-      : "disconnected"
+      : "disconnected",
   );
   const [toasts, setToasts] = useState([]);
   const [activePage, setActivePage] = useState("create");
   const [lastAction, setLastAction] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
-  const [fieldStatus, setFieldStatus] = useState({ email: null, profileUrl: null });
-  const [fieldTouched, setFieldTouched] = useState({ email: false, profileUrl: false });
+  const [fieldStatus, setFieldStatus] = useState({
+    email: null,
+    profileUrl: null,
+  });
+  const [fieldTouched, setFieldTouched] = useState({
+    email: false,
+    profileUrl: false,
+  });
   const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
@@ -514,9 +533,13 @@ export default function Rolodex() {
   const [sendingDraftId, setSendingDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
-  const [campaignCompany, setCampaignCompany] = useState(DEFAULT_TEMPLATE.company);
+  const [campaignCompany, setCampaignCompany] = useState(
+    DEFAULT_TEMPLATE.company,
+  );
   const [studentName, setStudentName] = useState(DEFAULT_TEMPLATE.studentName);
-  const [studentSchool, setStudentSchool] = useState(DEFAULT_TEMPLATE.studentSchool);
+  const [studentSchool, setStudentSchool] = useState(
+    DEFAULT_TEMPLATE.studentSchool,
+  );
   const validationTimers = useRef({});
   const selectAllRef = useRef(null);
   const subjectRef = useRef(null);
@@ -534,18 +557,20 @@ export default function Rolodex() {
           const storedTo = Array.isArray(parsed.to)
             ? parsed.to.filter(Boolean).map(String)
             : typeof parsed.to === "string"
-            ? parsed.to
-                .split(/[,\n]/)
-                .map((item) => item.trim())
-                .filter(Boolean)
-            : [];
+              ? parsed.to
+                  .split(/[,\n]/)
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              : [];
           setToChips(storedTo.length > 0 ? storedTo : [...DEFAULT_TEMPLATE.to]);
           setSubject(parsed.subject ?? "");
           setEmailBody(parsed.body ?? "");
           setCampaignRole(parsed.role ?? DEFAULT_TEMPLATE.role);
           setCampaignCompany(parsed.company ?? DEFAULT_TEMPLATE.company);
           setStudentName(parsed.studentName ?? DEFAULT_TEMPLATE.studentName);
-          setStudentSchool(parsed.studentSchool ?? DEFAULT_TEMPLATE.studentSchool);
+          setStudentSchool(
+            parsed.studentSchool ?? DEFAULT_TEMPLATE.studentSchool,
+          );
         }
       }
     } catch (error) {
@@ -564,12 +589,15 @@ export default function Rolodex() {
         if (Array.isArray(parsed)) {
           setCustomPlaceholders(
             parsed
-              .filter((item) => item && typeof item === "object" && item.token && item.label)
+              .filter(
+                (item) =>
+                  item && typeof item === "object" && item.token && item.label,
+              )
               .map((item) => ({
                 id: item.id || item.token,
                 label: String(item.label),
                 token: String(item.token),
-              }))
+              })),
           );
         }
       }
@@ -592,18 +620,32 @@ export default function Rolodex() {
       studentSchool,
     };
     try {
-      window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(
+        TEMPLATE_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
     } catch (error) {
       console.warn("Failed to persist template", error);
     }
-  }, [campaignCompany, campaignRole, emailBody, studentName, studentSchool, subject, toChips]);
+  }, [
+    campaignCompany,
+    campaignRole,
+    emailBody,
+    studentName,
+    studentSchool,
+    subject,
+    toChips,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
     try {
-      window.localStorage.setItem(PLACEHOLDER_STORAGE_KEY, JSON.stringify(customPlaceholders));
+      window.localStorage.setItem(
+        PLACEHOLDER_STORAGE_KEY,
+        JSON.stringify(customPlaceholders),
+      );
     } catch (error) {
       console.warn("Failed to persist custom placeholders", error);
     }
@@ -660,7 +702,8 @@ export default function Rolodex() {
     if (!fieldTouched.email) {
       return;
     }
-    validationTimers.current.email && clearTimeout(validationTimers.current.email);
+    validationTimers.current.email &&
+      clearTimeout(validationTimers.current.email);
     const value = email.trim();
     validationTimers.current.email = setTimeout(() => {
       if (!value) {
@@ -671,7 +714,8 @@ export default function Rolodex() {
       runValidation("email", value);
     }, 150);
     return () => {
-      validationTimers.current.email && clearTimeout(validationTimers.current.email);
+      validationTimers.current.email &&
+        clearTimeout(validationTimers.current.email);
     };
   }, [email, fieldTouched.email, runValidation]);
 
@@ -679,7 +723,8 @@ export default function Rolodex() {
     if (!fieldTouched.profileUrl) {
       return;
     }
-    validationTimers.current.profileUrl && clearTimeout(validationTimers.current.profileUrl);
+    validationTimers.current.profileUrl &&
+      clearTimeout(validationTimers.current.profileUrl);
     const value = profileUrl.trim();
     validationTimers.current.profileUrl = setTimeout(() => {
       if (!value) {
@@ -690,7 +735,8 @@ export default function Rolodex() {
       runValidation("profileUrl", value);
     }, 150);
     return () => {
-      validationTimers.current.profileUrl && clearTimeout(validationTimers.current.profileUrl);
+      validationTimers.current.profileUrl &&
+        clearTimeout(validationTimers.current.profileUrl);
     };
   }, [profileUrl, fieldTouched.profileUrl, runValidation]);
 
@@ -699,7 +745,7 @@ export default function Rolodex() {
       setFieldTouched((prev) => ({ ...prev, [field]: true }));
       runValidation(field, value.trim());
     },
-    [runValidation]
+    [runValidation],
   );
 
   const disableSubmit = Boolean(loadingAction);
@@ -715,7 +761,9 @@ export default function Rolodex() {
       return;
     }
     if (window.matchMedia) {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const prefersDark = window.matchMedia(
+        "(prefers-color-scheme: dark)",
+      ).matches;
       if (prefersDark) {
         setTheme("dark");
       }
@@ -788,7 +836,7 @@ export default function Rolodex() {
           pushToast("error", "Unable to copy contact ID.");
         });
     },
-    [pushToast]
+    [pushToast],
   );
 
   const handleCopyContactId = useCallback(() => {
@@ -824,7 +872,13 @@ export default function Rolodex() {
   }, [gmailStatus, pushToast]);
 
   const handleSubjectKeyDown = useCallback((event) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
       event.preventDefault();
     }
   }, []);
@@ -848,7 +902,7 @@ export default function Rolodex() {
       setToChips((prev) => [...prev, trimmed]);
       return true;
     },
-    [pushToast]
+    [pushToast],
   );
 
   const handleToInputKeyDown = useCallback(
@@ -864,7 +918,7 @@ export default function Rolodex() {
         setToChips((prev) => prev.slice(0, -1));
       }
     },
-    [addToChip, toInputValue]
+    [addToChip, toInputValue],
   );
 
   const handleToInputBlur = useCallback(() => {
@@ -887,7 +941,10 @@ export default function Rolodex() {
       const currentValue = lastFocusedField === "subject" ? subject : emailBody;
       const element = targetRef.current;
       if (!element) {
-        setter((prev) => `${prev}${prev ? (prev.endsWith(" ") ? "" : " ") : ""}${token}`);
+        setter(
+          (prev) =>
+            `${prev}${prev ? (prev.endsWith(" ") ? "" : " ") : ""}${token}`,
+        );
         return;
       }
       const start = element.selectionStart ?? currentValue.length;
@@ -900,7 +957,7 @@ export default function Rolodex() {
         element.setSelectionRange(cursor, cursor);
       });
     },
-    [emailBody, lastFocusedField, subject]
+    [emailBody, lastFocusedField, subject],
   );
 
   const handleAddCustomPlaceholder = useCallback(() => {
@@ -921,7 +978,9 @@ export default function Rolodex() {
       pushToast("error", "Placeholder label and path are required.");
       return;
     }
-    const cleanedPath = normalizedPath.replace(/^{{\s*/, "").replace(/\s*}}$/, "");
+    const cleanedPath = normalizedPath
+      .replace(/^{{\s*/, "")
+      .replace(/\s*}}$/, "");
     const token = `{{${cleanedPath}}}`;
     if (
       customPlaceholders.some((item) => item.token === token) ||
@@ -999,7 +1058,8 @@ export default function Rolodex() {
         pushToast("success", "Contacts loaded for emailing.");
       }
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : "Failed to load contacts";
+      const messageText =
+        error instanceof Error ? error.message : "Failed to load contacts";
       pushToast("error", messageText);
     } finally {
       setLoadingContacts(false);
@@ -1025,7 +1085,7 @@ export default function Rolodex() {
       }
       handleToggleRecipient(id);
     },
-    [handleToggleRecipient]
+    [handleToggleRecipient],
   );
 
   const allRecipientIds = useMemo(
@@ -1034,7 +1094,7 @@ export default function Rolodex() {
         .map((contact) => contact.__contactId || resolveContactId(contact))
         .filter(Boolean)
         .map(String),
-    [emailContacts, resolveContactId]
+    [emailContacts, resolveContactId],
   );
 
   const allRecipientsSelected = useMemo(() => {
@@ -1056,7 +1116,9 @@ export default function Rolodex() {
     if (allRecipientIds.length === 0) {
       return;
     }
-    setEmailRecipients((prev) => (allRecipientsSelected ? [] : allRecipientIds));
+    setEmailRecipients((prev) =>
+      allRecipientsSelected ? [] : allRecipientIds,
+    );
   }, [allRecipientIds, allRecipientsSelected]);
 
   const handleSaveTemplate = useCallback(() => {
@@ -1075,8 +1137,14 @@ export default function Rolodex() {
       studentSchool,
     };
     try {
-      window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(payload));
-      window.localStorage.setItem(PLACEHOLDER_STORAGE_KEY, JSON.stringify(customPlaceholders));
+      window.localStorage.setItem(
+        TEMPLATE_STORAGE_KEY,
+        JSON.stringify(payload),
+      );
+      window.localStorage.setItem(
+        PLACEHOLDER_STORAGE_KEY,
+        JSON.stringify(customPlaceholders),
+      );
       pushToast("success", "Template saved to this browser.");
     } catch (error) {
       pushToast("error", "Unable to save the template.");
@@ -1126,11 +1194,9 @@ export default function Rolodex() {
     () =>
       toChips.filter(
         (chip) =>
-          chip &&
-          chip !== "{{contact.email}}" &&
-          !EMAIL_REGEX.test(chip)
+          chip && chip !== "{{contact.email}}" && !EMAIL_REGEX.test(chip),
       ),
-    [toChips]
+    [toChips],
   );
 
   const toErrorMessage = useMemo(() => {
@@ -1146,14 +1212,15 @@ export default function Rolodex() {
   const hasValidToValue = useMemo(
     () =>
       toChips.some(
-        (chip) => chip === "{{contact.email}}" || (chip && EMAIL_REGEX.test(chip))
+        (chip) =>
+          chip === "{{contact.email}}" || (chip && EMAIL_REGEX.test(chip)),
       ),
-    [toChips]
+    [toChips],
   );
 
-  const bodyMissingDraft = useMemo(
-    () => !emailBody.toLowerCase().includes("{{draft}}"),
-    [emailBody]
+  const hasDraftToken = useMemo(
+    () => emailBody.toLowerCase().includes("{{draft}}"),
+    [emailBody],
   );
 
   const subjectCharCount = useMemo(() => subject.length, [subject]);
@@ -1186,12 +1253,12 @@ export default function Rolodex() {
         const emailValue = resolveContactEmail(contact);
         return emailValue && EMAIL_REGEX.test(String(emailValue));
       }),
-    [selectedContacts]
+    [selectedContacts],
   );
 
   const hasValidContactEmail = useMemo(
     () => contactsWithEmails.length > 0,
-    [contactsWithEmails]
+    [contactsWithEmails],
   );
 
   const previewContact = useMemo(() => {
@@ -1203,7 +1270,21 @@ export default function Rolodex() {
 
   const aiIncludedResults = useMemo(
     () => aiResults.filter((result) => !result.excluded),
-    [aiResults]
+    [aiResults],
+  );
+
+  const hasManualRows = manualEmailRows.length > 0;
+
+  const responseEmailRows = useMemo(() => {
+    if (manualEmailRows.length > 0) {
+      return manualEmailRows;
+    }
+    return extractRewriteResponseEmails(rewriteResponse);
+  }, [manualEmailRows, rewriteResponse]);
+
+  const rewriteResponseJson = useMemo(
+    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
+    [rewriteResponse],
   );
 
   const requestPreview = useMemo(() => {
@@ -1316,23 +1397,23 @@ export default function Rolodex() {
     if (isGenerating) {
       return false;
     }
-    return (
-      subject.trim().length > 0 &&
-      emailBody.trim().length > 0 &&
-      !bodyMissingDraft &&
-      hasValidToValue &&
-      invalidToChips.length === 0 &&
-      hasValidContactEmail
-    );
+    if (!hasValidToValue || invalidToChips.length > 0) {
+      return false;
+    }
+    if (!hasValidContactEmail) {
+      return false;
+    }
+    return true;
   }, [
-    bodyMissingDraft,
     emailBody,
     hasValidContactEmail,
     hasValidToValue,
     invalidToChips,
-    isGenerating,
     subject,
   ]);
+
+  const canGenerate = templateReady && !isGenerating;
+  const canBuildTemplate = templateReady && !isGenerating;
 
   useEffect(() => {
     if (emailContacts.length === 0) {
@@ -1362,8 +1443,14 @@ export default function Rolodex() {
     }
   }, [emailContacts, previewContactId, resolveContactId]);
 
+  useEffect(() => {
+    setResponseSending({});
+    setResponseBodyEdits({});
+  }, [manualEmailRows, rewriteResponse]);
+
   const handlePreviewTemplate = useCallback(() => {
-    const contactCandidate = previewContact || contactsWithEmails[0] || emailContacts[0];
+    const contactCandidate =
+      previewContact || contactsWithEmails[0] || emailContacts[0];
     if (!contactCandidate) {
       pushToast("info", "Load a contact to preview.");
       setPreviewContent(null);
@@ -1381,11 +1468,14 @@ export default function Rolodex() {
       }
     }
     const previewTo = toChips
-      .map((chip) => (chip === "{{contact.email}}" ? contactEmail || "[missing email]" : chip))
+      .map((chip) =>
+        chip === "{{contact.email}}" ? contactEmail || "[missing email]" : chip,
+      )
       .join(", ");
-    const studentContext = studentName || studentSchool
-      ? { name: studentName || null, school: studentSchool || null }
-      : null;
+    const studentContext =
+      studentName || studentSchool
+        ? { name: studentName || null, school: studentSchool || null }
+        : null;
     const context = {
       contact: normalizedContact,
       company: campaignCompany || null,
@@ -1400,7 +1490,9 @@ export default function Rolodex() {
       draftReplacement: DEFAULT_PREVIEW_MESSAGE,
     });
     const id =
-      contactCandidate.__contactId || resolveContactId(contactCandidate) || "preview";
+      contactCandidate.__contactId ||
+      resolveContactId(contactCandidate) ||
+      "preview";
     setPreviewContent({
       to: previewTo,
       subject: previewSubject,
@@ -1435,10 +1527,6 @@ export default function Rolodex() {
       pushToast("error", "Body is required before generating drafts.");
       return;
     }
-    if (bodyMissingDraft) {
-      pushToast("error", "Body must include {{draft}}.");
-      return;
-    }
     if (!hasValidToValue || invalidToChips.length > 0) {
       pushToast("error", "Fix recipient emails before generating.");
       return;
@@ -1469,17 +1557,18 @@ export default function Rolodex() {
     const serialisedTo = Array.isArray(toChips)
       ? toChips.filter((item) => item && typeof item === "string").join(", ")
       : typeof toChips === "string"
-      ? toChips
-      : "";
+        ? toChips
+        : "";
     const templatePayload = {
       to: serialisedTo,
       subject: trimmedSubject,
       body: trimmedBody,
       repeat: { over: "contacts", as: "contact" },
     };
-    const studentContext = studentName || studentSchool
-      ? { name: studentName || null, school: studentSchool || null }
-      : null;
+    const studentContext =
+      studentName || studentSchool
+        ? { name: studentName || null, school: studentSchool || null }
+        : null;
     const dataset = {
       student: studentContext,
       role: campaignRole || null,
@@ -1521,6 +1610,7 @@ export default function Rolodex() {
           "Failed to generate drafts.";
         throw new Error(message);
       }
+      setManualEmailRows([]);
       const emails = Array.isArray(data?.emails) ? data.emails : [];
       if (emails.length === 0) {
         setAiResults([]);
@@ -1563,24 +1653,24 @@ export default function Rolodex() {
               }
               return acc;
             },
-            { sent: 0, failed: 0 }
+            { sent: 0, failed: 0 },
           )
         : null;
       pushToast(
         "success",
-        `Generated ${emails.length} draft${emails.length === 1 ? "" : "s"}.`
+        `Generated ${emails.length} draft${emails.length === 1 ? "" : "s"}.`,
       );
       if (sendSummary) {
         if (sendSummary.sent > 0) {
           pushToast(
             "success",
-            `Queued ${sendSummary.sent} email${sendSummary.sent === 1 ? "" : "s"} for delivery.`
+            `Queued ${sendSummary.sent} email${sendSummary.sent === 1 ? "" : "s"} for delivery.`,
           );
         }
         if (sendSummary.failed > 0) {
           pushToast(
             "error",
-            `${sendSummary.failed} email${sendSummary.failed === 1 ? "" : "s"} failed to send.`
+            `${sendSummary.failed} email${sendSummary.failed === 1 ? "" : "s"} failed to send.`,
           );
         }
       }
@@ -1595,7 +1685,6 @@ export default function Rolodex() {
   }, [
     campaignCompany,
     campaignRole,
-    bodyMissingDraft,
     contactsWithEmails,
     emailBody,
     hasValidContactEmail,
@@ -1608,19 +1697,154 @@ export default function Rolodex() {
     toChips,
   ]);
 
+  const handleBuildTemplateEmails = useCallback(() => {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = emailBody.trim();
+    if (!trimmedSubject) {
+      pushToast("error", "Subject is required before building emails.");
+      return;
+    }
+    if (!trimmedBody) {
+      pushToast("error", "Body is required before building emails.");
+      return;
+    }
+    if (!hasValidToValue || invalidToChips.length > 0) {
+      pushToast("error", "Fix recipient emails before building.");
+      return;
+    }
+    if (!hasValidContactEmail) {
+      pushToast("error", "Load at least one contact with a valid email.");
+      return;
+    }
+
+    const studentContext =
+      studentName || studentSchool
+        ? { name: studentName || null, school: studentSchool || null }
+        : null;
+
+    const results = contactsWithEmails.map((contact, index) => {
+      const normalizedContact = { ...contact };
+      const contactName = resolveContactName(contact);
+      const contactEmail = resolveContactEmail(contact);
+      if (contactName) {
+        if (!normalizedContact.name) {
+          normalizedContact.name = contactName;
+        }
+        if (!normalizedContact.full_name && !normalizedContact.fullName) {
+          normalizedContact.full_name = contactName;
+        }
+      }
+      if (contactEmail && !normalizedContact.email) {
+        normalizedContact.email = contactEmail;
+      }
+      const context = {
+        contact: normalizedContact,
+        company: campaignCompany || null,
+        role: campaignRole || null,
+        student: studentContext,
+      };
+      const toValue = toChips
+        .map((chip) => {
+          if (!chip) {
+            return "";
+          }
+          if (chip === "{{contact.email}}") {
+            return contactEmail || "";
+          }
+          if (chip.includes("{{")) {
+            return replaceTemplateTokens(chip, context, {
+              preserveDraft: false,
+              draftReplacement: "",
+            });
+          }
+          return chip;
+        })
+        .map((value) => (value ? value.trim() : ""))
+        .filter((value) => value.length > 0)
+        .join(", ");
+      const resolvedSubject = replaceTemplateTokens(trimmedSubject, context, {
+        preserveDraft: true,
+      });
+      const resolvedBody = replaceTemplateTokens(trimmedBody, context, {
+        preserveDraft: false,
+        draftReplacement: "",
+      });
+      const rawContactId =
+        contact.__contactId || resolveContactId(contact) || index;
+      const resultId = `manual-${rawContactId}`;
+      return {
+        id: resultId,
+        to: toValue || contactEmail || "",
+        subject: resolvedSubject,
+        body: resolvedBody,
+        excluded: false,
+        isEditing: false,
+      };
+    });
+
+    setManualEmailRows([]);
+    if (results.length === 0) {
+      pushToast("info", "Load at least one contact with a valid email.");
+      return;
+    }
+
+    const manualRows = results.map((item) => {
+      const emailValue = item.to ?? "";
+      const subjectValue = item.subject ?? "";
+      const bodyValue = item.body ?? "";
+      return {
+        email: emailValue,
+        subject: subjectValue,
+        body: bodyValue,
+        json: {
+          to: emailValue,
+          subject: subjectValue,
+          body: bodyValue,
+        },
+      };
+    });
+
+    setRewriteResponse(null);
+    setManualEmailRows([]);
+    setManualEmailRows(manualRows);
+    setAiResults([]);
+    setSendResults([]);
+    setSendingDraft(null);
+    pushToast(
+      "success",
+      `Prepared ${results.length} email${results.length === 1 ? "" : "s"} from your template.`,
+    );
+  }, [
+    campaignCompany,
+    campaignRole,
+    contactsWithEmails,
+    emailBody,
+    hasValidContactEmail,
+    hasValidToValue,
+    invalidToChips,
+    pushToast,
+    resolveContactEmail,
+    resolveContactId,
+    resolveContactName,
+    studentName,
+    studentSchool,
+    subject,
+    toChips,
+  ]);
+
   const handleToggleResultExclude = useCallback((index) => {
     setAiResults((prev) =>
       prev.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, excluded: !item.excluded } : item
-      )
+        itemIndex === index ? { ...item, excluded: !item.excluded } : item,
+      ),
     );
   }, []);
 
   const handleToggleResultEdit = useCallback((index) => {
     setAiResults((prev) =>
       prev.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, isEditing: !item.isEditing } : item
-      )
+        itemIndex === index ? { ...item, isEditing: !item.isEditing } : item,
+      ),
     );
   }, []);
 
@@ -1784,7 +2008,7 @@ export default function Rolodex() {
         pushToast("error", "Unable to download drafts.");
       }
     },
-    [aiIncludedResults, pushToast]
+    [aiIncludedResults, pushToast],
   );
 
   const resetResponses = useCallback(() => {
@@ -1885,7 +2109,10 @@ export default function Rolodex() {
         if (!r.ok) {
           const messageText =
             (typeof data === "string" && data) ||
-            (data && typeof data === "object" && "error" in data && data.error) ||
+            (data &&
+              typeof data === "object" &&
+              "error" in data &&
+              data.error) ||
             r.statusText ||
             "Request failed";
           throw new Error(messageText);
@@ -1905,7 +2132,8 @@ export default function Rolodex() {
           }
         }
       } catch (error) {
-        const messageText = error instanceof Error ? error.message : "Request failed";
+        const messageText =
+          error instanceof Error ? error.message : "Request failed";
         setErrorMessage(messageText);
         pushToast("error", messageText);
         setResponse(null);
@@ -1923,7 +2151,7 @@ export default function Rolodex() {
       resetResponses,
       title,
       username,
-    ]
+    ],
   );
 
   const gmailLabel = useMemo(() => {
@@ -1934,7 +2162,7 @@ export default function Rolodex() {
 
   const themeToggleLabel = useMemo(
     () => (theme === "dark" ? "Switch to light mode" : "Switch to dark mode"),
-    [theme]
+    [theme],
   );
 
   const contactDetailFields = (
@@ -2000,8 +2228,8 @@ export default function Rolodex() {
           fieldStatus.email === "error"
             ? " error"
             : fieldStatus.email === "success"
-            ? " success"
-            : ""
+              ? " success"
+              : ""
         }`}
       >
         <label className="field-label" htmlFor="email">
@@ -2031,8 +2259,8 @@ export default function Rolodex() {
           fieldStatus.profileUrl === "error"
             ? " error"
             : fieldStatus.profileUrl === "success"
-            ? " success"
-            : ""
+              ? " success"
+              : ""
         }`}
       >
         <label className="field-label" htmlFor="profileUrl">
@@ -2050,7 +2278,9 @@ export default function Rolodex() {
         <span className="success-indicator">
           <IconCheck />
         </span>
-        <div className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}>
+        <div
+          className={`validation-text${fieldErrors.profileUrl ? " error" : ""}`}
+        >
           {fieldErrors.profileUrl}
         </div>
       </div>
@@ -2073,19 +2303,12 @@ export default function Rolodex() {
   }, [lastAction, response]);
 
   const showJsonResponse =
-    lastAction && lastAction === activePage && lastAction !== "view" && response;
+    lastAction &&
+    lastAction === activePage &&
+    lastAction !== "view" &&
+    response;
 
-  const emptyMessageMap = {
-    create: "Fill in contact details to create a new record.",
-    view: "Load a contact to preview their profile information.",
-    update: "Update fields above and save your changes.",
-    email: "Compose a template and generate AI drafts for your contacts.",
-  };
-
-  const sampleViewRecord = useMemo(
-    () => ({ ...SAMPLE_CONTACT_RECORD }),
-    []
-  );
+  const sampleViewRecord = useMemo(() => ({ ...SAMPLE_CONTACT_RECORD }), []);
 
   const resolvedViewRecords = useMemo(() => {
     if (activePage !== "view") {
@@ -2100,7 +2323,8 @@ export default function Rolodex() {
     return [];
   }, [activePage, errorMessage, sampleViewRecord, viewRecords]);
 
-  const isSampleView = viewRecords.length === 0 && resolvedViewRecords.length > 0;
+  const isSampleView =
+    viewRecords.length === 0 && resolvedViewRecords.length > 0;
 
   const formatProfileHref = (value) => {
     if (!value || typeof value !== "string") {
@@ -2126,45 +2350,42 @@ export default function Rolodex() {
     });
   }, []);
 
-  const computeEngagementStatus = useCallback(
-    (record) => {
-      const explicitLabel =
-        record?.engagement_label ??
-        record?.engagementLabel ??
-        record?.engagement_text ??
-        record?.engagementText ??
-        record?.engagement ??
-        null;
-      const candidate =
-        record?.last_contacted ??
-        record?.last_messaged ??
-        record?.lastMessaged ??
-        record?.last_contacted_at ??
-        null;
-      if (!candidate) {
-        if (explicitLabel) {
-          return { color: "gray", label: explicitLabel };
-        }
-        return { color: "gray", label: "No recent messages" };
+  const computeEngagementStatus = useCallback((record) => {
+    const explicitLabel =
+      record?.engagement_label ??
+      record?.engagementLabel ??
+      record?.engagement_text ??
+      record?.engagementText ??
+      record?.engagement ??
+      null;
+    const candidate =
+      record?.last_contacted ??
+      record?.last_messaged ??
+      record?.lastMessaged ??
+      record?.last_contacted_at ??
+      null;
+    if (!candidate) {
+      if (explicitLabel) {
+        return { color: "gray", label: explicitLabel };
       }
-      const date = new Date(candidate);
-      if (Number.isNaN(date.getTime())) {
-        if (explicitLabel) {
-          return { color: "gray", label: explicitLabel };
-        }
-        return { color: "gray", label: "No recent messages" };
+      return { color: "gray", label: "No recent messages" };
+    }
+    const date = new Date(candidate);
+    if (Number.isNaN(date.getTime())) {
+      if (explicitLabel) {
+        return { color: "gray", label: explicitLabel };
       }
-      const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
-      if (diffDays <= 31) {
-        return { color: "green", label: "Last messaged within a month" };
-      }
-      if (diffDays <= 62) {
-        return { color: "yellow", label: "Last messaged within two months" };
-      }
-      return { color: "red", label: "Last messaged three+ months ago" };
-    },
-    []
-  );
+      return { color: "gray", label: "No recent messages" };
+    }
+    const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    if (diffDays <= 31) {
+      return { color: "green", label: "Last messaged within a month" };
+    }
+    if (diffDays <= 62) {
+      return { color: "yellow", label: "Last messaged within two months" };
+    }
+    return { color: "red", label: "Last messaged three+ months ago" };
+  }, []);
 
   return (
     <div className="rolodex-page">
@@ -2193,7 +2414,9 @@ export default function Rolodex() {
                 )}
               </span>
               {gmailLabel}
-              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+              <span className="gmail-tooltip">
+                Use Gmail to auto-log emails.
+              </span>
             </button>
             <button
               type="button"
@@ -2258,7 +2481,11 @@ export default function Rolodex() {
           )}
         </div>
 
-        <nav className="rolodex-tabs" role="tablist" aria-label="Rolodex sections">
+        <nav
+          className="rolodex-tabs"
+          role="tablist"
+          aria-label="Rolodex sections"
+        >
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -2300,7 +2527,9 @@ export default function Rolodex() {
           {activePage === "view" && (
             <div role="tabpanel" id="view-panel" aria-labelledby="view-tab">
               <form className="simple-form" onSubmit={handleSubmit} noValidate>
-                <p className="view-helper">Use the username above to load a contact.</p>
+                <p className="view-helper">
+                  Use the username above to load a contact.
+                </p>
                 <div className="action-row">
                   <button
                     type="submit"
@@ -2358,7 +2587,9 @@ export default function Rolodex() {
                   </div>
                 </div>
                 {emailContacts.length === 0 ? (
-                  <p className="recipient-placeholder">Load contacts to choose recipients.</p>
+                  <p className="recipient-placeholder">
+                    Load contacts to choose recipients.
+                  </p>
                 ) : (
                   <div
                     className="table-scroll recipient-table-scroll"
@@ -2375,7 +2606,9 @@ export default function Rolodex() {
                         <tr>
                           <th scope="col" className="select-header">
                             <label className="select-all-control">
-                              <span className="select-all-label">Select all</span>
+                              <span className="select-all-label">
+                                Select all
+                              </span>
                               <input
                                 ref={selectAllRef}
                                 type="checkbox"
@@ -2399,37 +2632,46 @@ export default function Rolodex() {
                       </thead>
                       <tbody>
                         {emailContacts.map((contact) => {
-                          const id = contact.__contactId || resolveContactId(contact);
+                          const id =
+                            contact.__contactId || resolveContactId(contact);
                           if (!id) {
                             return null;
                           }
                           const normalizedId = String(id);
-                          const isSelected = emailRecipients.includes(normalizedId);
+                          const isSelected =
+                            emailRecipients.includes(normalizedId);
                           const profileLink = formatProfileHref(
-                            contact.profile_url ?? contact.profileUrl
+                            contact.profile_url ?? contact.profileUrl,
                           );
                           const engagement = computeEngagementStatus(contact);
                           const lastUpdatedDisplay = formatTimestamp(
-                            contact.last_updated ?? contact.updated_at ?? contact.updatedAt
+                            contact.last_updated ??
+                              contact.updated_at ??
+                              contact.updatedAt,
                           );
                           const lastMessagedDisplay = formatTimestamp(
                             contact.last_contacted ??
                               contact.last_messaged ??
                               contact.lastMessaged ??
-                              contact.last_contacted_at
+                              contact.last_contacted_at,
                           );
-                          const contactName = resolveContactName(contact) || normalizedId;
+                          const contactName =
+                            resolveContactName(contact) || normalizedId;
                           return (
                             <tr
                               key={normalizedId}
                               className={isSelected ? "selected" : ""}
-                              onClick={(event) => handleRecipientRowClick(event, normalizedId)}
+                              onClick={(event) =>
+                                handleRecipientRowClick(event, normalizedId)
+                              }
                             >
                               <td className="select-cell">
                                 <button
                                   type="button"
                                   className={`select-toggle${isSelected ? " selected" : ""}`}
-                                  onClick={() => handleToggleRecipient(normalizedId)}
+                                  onClick={() =>
+                                    handleToggleRecipient(normalizedId)
+                                  }
                                   aria-pressed={isSelected}
                                   aria-label={
                                     isSelected
@@ -2447,7 +2689,11 @@ export default function Rolodex() {
                               <td>{contact.location ?? "—"}</td>
                               <td>
                                 {profileLink ? (
-                                  <a href={profileLink} target="_blank" rel="noreferrer">
+                                  <a
+                                    href={profileLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
                                     {contact.profile_url ?? contact.profileUrl}
                                   </a>
                                 ) : (
@@ -2470,7 +2716,9 @@ export default function Rolodex() {
                                         : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
                                     }
                                   />
-                                  <span className="status-text">{engagement.label}</span>
+                                  <span className="status-text">
+                                    {engagement.label}
+                                  </span>
                                 </div>
                               </td>
                               <td>{lastUpdatedDisplay}</td>
@@ -2511,7 +2759,9 @@ export default function Rolodex() {
                       id="campaignCompany"
                       className="text-input"
                       value={campaignCompany}
-                      onChange={(event) => setCampaignCompany(event.target.value)}
+                      onChange={(event) =>
+                        setCampaignCompany(event.target.value)
+                      }
                       placeholder="e.g. Figma"
                     />
                     <div className="helper-text">Used for {"{{company}}"}.</div>
@@ -2527,7 +2777,9 @@ export default function Rolodex() {
                       onChange={(event) => setStudentName(event.target.value)}
                       placeholder="e.g. Alex Chen"
                     />
-                    <div className="helper-text">Used for {"{{student.name}}"}.</div>
+                    <div className="helper-text">
+                      Used for {"{{student.name}}"}.
+                    </div>
                   </div>
                   <div className="field">
                     <label className="field-label" htmlFor="studentSchoolInput">
@@ -2540,7 +2792,9 @@ export default function Rolodex() {
                       onChange={(event) => setStudentSchool(event.target.value)}
                       placeholder="e.g. University of Toronto"
                     />
-                    <div className="helper-text">Used for {"{{student.school}}"}.</div>
+                    <div className="helper-text">
+                      Used for {"{{student.school}}"}.
+                    </div>
                   </div>
                 </div>
                 <div className={`field${toErrorMessage ? " error" : ""}`}>
@@ -2587,8 +2841,11 @@ export default function Rolodex() {
                       autoComplete="off"
                     />
                   </div>
-                  <div className={`validation-text${toErrorMessage ? " error" : ""}`}>
-                    {toErrorMessage || "Use Enter to add addresses or {{contact.email}}."}
+                  <div
+                    className={`validation-text${toErrorMessage ? " error" : ""}`}
+                  >
+                    {toErrorMessage ||
+                      "Use Enter to add addresses or {{contact.email}}."}
                   </div>
                 </div>
 
@@ -2630,9 +2887,11 @@ export default function Rolodex() {
                       onFocus={() => setLastFocusedField("subject")}
                       placeholder="Subject"
                     />
-                    <div className="helper-text">Characters: {subjectCharCount}</div>
+                    <div className="helper-text">
+                      Characters: {subjectCharCount}
+                    </div>
                   </div>
-                  <div className={`field double${bodyMissingDraft ? " warning" : ""}`}>
+                  <div className="field double">
                     <label className="field-label" htmlFor="emailBody">
                       Body
                     </label>
@@ -2646,20 +2905,28 @@ export default function Rolodex() {
                       placeholder="Write your email template with placeholders"
                       rows={8}
                     />
-                    <div className={`helper-text${bodyMissingDraft ? " error" : ""}`}>
-                      {bodyMissingDraft
-                        ? "Add {{draft}} so AI can complete the message."
-                        : "Insert placeholders where needed. {{draft}} will be filled by AI."}
+                    <div className="helper-text">
+                      {hasDraftToken
+                        ? "Insert placeholders where needed. We'll keep {{draft}} for AI to expand."
+                        : "Insert placeholders where needed. Add {{draft}} if you want AI to extend a section."}
                     </div>
                   </div>
                 </div>
 
                 <div className="composer-actions">
                   <div className="composer-actions-left">
-                    <button type="button" className="button secondary" onClick={handleSaveTemplate}>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={handleSaveTemplate}
+                    >
                       Save as template
                     </button>
-                    <button type="button" className="button tertiary" onClick={handleResetTemplate}>
+                    <button
+                      type="button"
+                      className="button tertiary"
+                      onClick={handleResetTemplate}
+                    >
                       Reset
                     </button>
                   </div>
@@ -2670,20 +2937,26 @@ export default function Rolodex() {
                         id="previewContact"
                         className="select-input"
                         value={previewContactId}
-                        onChange={(event) => setPreviewContactId(event.target.value)}
+                        onChange={(event) =>
+                          setPreviewContactId(event.target.value)
+                        }
                         disabled={emailContacts.length === 0}
                       >
                         {emailContacts.length === 0 ? (
                           <option value="">Load contacts to preview</option>
                         ) : (
                           emailContacts.map((contact) => {
-                            const id = contact.__contactId || resolveContactId(contact);
+                            const id =
+                              contact.__contactId || resolveContactId(contact);
                             if (!id) {
                               return null;
                             }
-                            const name = resolveContactName(contact) || "Unknown contact";
+                            const name =
+                              resolveContactName(contact) || "Unknown contact";
                             const emailValue = resolveContactEmail(contact);
-                            const label = emailValue ? `${name} (${emailValue})` : name;
+                            const label = emailValue
+                              ? `${name} (${emailValue})`
+                              : name;
                             return (
                               <option key={id} value={id}>
                                 {label}
@@ -2703,13 +2976,23 @@ export default function Rolodex() {
                     </button>
                     <button
                       type="button"
+                      className="button secondary"
+                      onClick={handleBuildTemplateEmails}
+                      disabled={!canBuildTemplate}
+                    >
+                      Edit manually
+                    </button>
+                    <button
+                      type="button"
                       className="button"
                       onClick={handleGenerateEmails}
-                      disabled={!canGenerate || isGenerating}
+                      disabled={!canGenerate}
                       aria-busy={isGenerating}
                     >
                       {isGenerating ? <IconLoader /> : null}
-                      {isGenerating ? "Generating…" : "Generate with AI (dry run)"}
+                      {isGenerating
+                        ? "Generating…"
+                        : "Generate with AI (dry run)"}
                     </button>
                   </div>
                 </div>
@@ -2727,11 +3010,15 @@ export default function Rolodex() {
                     <div className="preview-meta">
                       <div>
                         <span className="preview-meta-label">To</span>
-                        <span className="preview-meta-value">{previewContent.to || "—"}</span>
+                        <span className="preview-meta-value">
+                          {previewContent.to || "—"}
+                        </span>
                       </div>
                       <div>
                         <span className="preview-meta-label">Subject</span>
-                        <span className="preview-meta-value">{previewContent.subject || "—"}</span>
+                        <span className="preview-meta-value">
+                          {previewContent.subject || "—"}
+                        </span>
                       </div>
                     </div>
                     <pre className="preview-body">{previewContent.body || ""}</pre>
@@ -2776,7 +3063,7 @@ export default function Rolodex() {
                 )}
               </div>
 
-              {aiResults.length > 0 && (
+              {!hasManualRows && aiResults.length > 0 && (
                 <div className="ai-results-panel">
                   <div className="ai-results-header">
                     <h3>AI Results</h3>
@@ -2822,17 +3109,37 @@ export default function Rolodex() {
                           <div className="ai-result-buttons">
                             <button
                               type="button"
-                              className="button tertiary"
-                              onClick={() => handleToggleResultEdit(index)}
+                              className="button secondary small"
+                              onClick={() => handleSendDraft(index)}
+                              disabled={Boolean(sendInfo?.success) || isSending}
+                              aria-busy={isSendingDefault}
                             >
-                              {result.isEditing ? "Done" : "Edit"}
+                              {isSendingDefault ? <IconLoader /> : null}
+                              {sendInfo?.success ? "Sent" : "Send"}
                             </button>
                             <button
                               type="button"
-                              className={`button ghost${result.excluded ? " active" : ""}`}
-                              onClick={() => handleToggleResultExclude(index)}
+                              className="button small gmail-send-button"
+                              onClick={() =>
+                                handleSendDraft(index, { provider: "gmail" })
+                              }
+                              disabled={gmailDisabled}
+                              aria-busy={isSendingGmail}
+                              title={
+                                gmailStatus !== "connected"
+                                  ? "Connect Gmail to enable Gmail sending."
+                                  : undefined
+                              }
                             >
-                              {result.excluded ? "Include" : "Exclude"}
+                              {isSendingGmail ? (
+                                <IconLoader />
+                              ) : (
+                                <IconMail className="gmail-send-icon" />
+                              )}
+                              {sendInfo?.provider === "gmail" &&
+                              sendInfo?.success
+                                ? "Sent via Gmail"
+                                : "Send via Gmail"}
                             </button>
                           </div>
                         </div>
@@ -2926,11 +3233,14 @@ export default function Rolodex() {
             </div>
           )}
 
-          {inlineSummary && !errorMessage && lastAction === "view" && activePage === "view" && (
-            <div className="inline-result" aria-live="polite">
-              {inlineSummary}
-            </div>
-          )}
+          {inlineSummary &&
+            !errorMessage &&
+            lastAction === "view" &&
+            activePage === "view" && (
+              <div className="inline-result" aria-live="polite">
+                {inlineSummary}
+              </div>
+            )}
 
           {resolvedViewRecords.length > 0 && (
             <div className="table-scroll">
@@ -2957,16 +3267,20 @@ export default function Rolodex() {
                   {resolvedViewRecords.map((record, index) => {
                     const contactIdValue = resolveContactId(record);
                     const key = contactIdValue || index;
-                    const profileLink = formatProfileHref(record.profile_url ?? record.profileUrl);
+                    const profileLink = formatProfileHref(
+                      record.profile_url ?? record.profileUrl,
+                    );
                     const engagement = computeEngagementStatus(record);
                     const lastUpdatedDisplay = formatTimestamp(
-                      record.last_updated ?? record.updated_at ?? record.updatedAt
+                      record.last_updated ??
+                        record.updated_at ??
+                        record.updatedAt,
                     );
                     const lastMessagedDisplay = formatTimestamp(
                       record.last_contacted ??
                         record.last_messaged ??
                         record.lastMessaged ??
-                        record.last_contacted_at
+                        record.last_contacted_at,
                     );
                     return (
                       <tr key={key}>
@@ -2975,7 +3289,9 @@ export default function Rolodex() {
                             <button
                               type="button"
                               className="contact-id-button"
-                              onClick={() => copyContactIdToClipboard(contactIdValue)}
+                              onClick={() =>
+                                copyContactIdToClipboard(contactIdValue)
+                              }
                               aria-label={`Copy contact ID ${contactIdValue}`}
                             >
                               <span>{contactIdValue}</span>
@@ -2991,7 +3307,11 @@ export default function Rolodex() {
                         <td>{record.location ?? "—"}</td>
                         <td>
                           {profileLink ? (
-                            <a href={profileLink} target="_blank" rel="noreferrer">
+                            <a
+                              href={profileLink}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
                               {record.profile_url ?? record.profileUrl}
                             </a>
                           ) : (
@@ -3014,7 +3334,9 @@ export default function Rolodex() {
                                   : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
                               }
                             />
-                            <span className="status-text">{engagement.label}</span>
+                            <span className="status-text">
+                              {engagement.label}
+                            </span>
                           </div>
                         </td>
                         <td>{lastUpdatedDisplay}</td>
@@ -3033,9 +3355,17 @@ export default function Rolodex() {
           )}
         </div>
 
-        {!errorMessage && !inlineSummary && !response && resolvedViewRecords.length === 0 && (
-          <div className="empty-footer">{emptyMessageMap[activePage]}</div>
-        )}
+        <footer className="rolodex-legal" aria-label="Legal">
+          <a className="rolodex-legal-link" href="/privacy">
+            Privacy Policy
+          </a>
+          <span aria-hidden="true" className="rolodex-legal-divider">
+            •
+          </span>
+          <a className="rolodex-legal-link" href="/terms">
+            Terms of Service
+          </a>
+        </footer>
       </section>
     </div>
   );
