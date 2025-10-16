@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import "../rolodex/rolodex.css";
 import "./cover-letter.css";
 
@@ -178,13 +178,11 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
   const [toasts, setToasts] = useState([]);
   const [creating, setCreating] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(false);
-  const [changingDraft, setChangingDraft] = useState(false);
   const [approving, setApproving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const [submissionId, setSubmissionId] = useState("");
-  const [submissionStatus, setSubmissionStatus] = useState(null);
   const [statusWarnings, setStatusWarnings] = useState([]);
 
   const [studentName, setStudentName] = useState("");
@@ -198,9 +196,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
   const [draftFormat, setDraftFormat] = useState("plain");
   const [draftContent, setDraftContent] = useState("");
   const [draftDetails, setDraftDetails] = useState(null);
-  const [changeInstructions, setChangeInstructions] = useState("");
-  const [changeMode, setChangeMode] = useState("apply");
-
   const [approvalResult, setApprovalResult] = useState(null);
   const [exportResult, setExportResult] = useState(null);
 
@@ -284,6 +279,62 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
     ]
   );
 
+  const applyDraftFromResponse = useCallback(
+    (data, fallbackFormat = draftFormat) => {
+      const draft = data?.draft ?? data;
+      const text =
+        draft?.text ??
+        draft?.content ??
+        draft?.body ??
+        data?.text ??
+        data?.content ??
+        data?.body ??
+        (typeof draft === "string" ? draft : typeof data === "string" ? data : "");
+
+      const warnings = Array.isArray(data?.warnings)
+        ? data.warnings
+        : Array.isArray(draft?.warnings)
+        ? draft.warnings
+        : [];
+
+      const wordCount =
+        draft?.wordCount ??
+        draft?.word_count ??
+        data?.wordCount ??
+        data?.word_count ??
+        (typeof draft?.wordCount === "number" ? draft.wordCount : null);
+
+      const matchScore =
+        draft?.matchScore ??
+        draft?.score ??
+        data?.matchScore ??
+        data?.score ??
+        null;
+
+      const hasDetails =
+        Boolean(text) ||
+        warnings.length > 0 ||
+        wordCount !== null ||
+        matchScore !== null ||
+        draft?.format;
+
+      setDraftContent(text || "");
+      setDraftDetails(
+        hasDetails
+          ? {
+              format: draft?.format ?? fallbackFormat,
+              wordCount,
+              matchScore,
+              warnings,
+            }
+          : null,
+      );
+
+      return { text, warnings };
+    },
+    [draftFormat]
+  );
+
   const handleResumeFileChange = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -312,12 +363,9 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
   };
 
   const resetSubmissionState = () => {
-    setSubmissionStatus(null);
     setStatusWarnings([]);
     setDraftContent("");
     setDraftDetails(null);
-    setChangeInstructions("");
-    setChangeMode("apply");
     setApprovalResult(null);
     setExportResult(null);
   };
@@ -350,18 +398,21 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
         data?.id ??
         data?.submission?.id ??
         "";
+      resetSubmissionState();
       if (nextId) {
         setSubmissionId(String(nextId));
-        resetSubmissionState();
-        pushToast("success", "Submission created. We'll track it for you.");
-        if (Array.isArray(data?.warnings)) {
-          setStatusWarnings(data.warnings);
-        }
-        if (data?.status || data?.state) {
-          setSubmissionStatus(data.status ?? data.state);
-        }
       } else {
-        pushToast("info", "Submission created, but we didn't receive an identifier.");
+        setSubmissionId("");
+      }
+
+      const { warnings, text } = applyDraftFromResponse(data);
+      if (warnings.length > 0) {
+        setStatusWarnings(warnings);
+      }
+      if (text) {
+        pushToast("success", "Draft ready. Review and edit below.");
+      } else {
+        pushToast("success", "Submission created. Load the draft when it's ready.");
       }
     } catch (error) {
       console.error("Failed to create submission", error);
@@ -379,78 +430,14 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
     setLoadingDraft(true);
     try {
       const data = await callCoverLetter("getDraft", { format: draftFormat });
-      const draft = data?.draft ?? data;
-      const text =
-        draft?.text ??
-        draft?.content ??
-        draft?.body ??
-        (typeof draft === "string" ? draft : "");
-      setDraftContent(text || "");
-      setDraftDetails({
-        format: draft?.format ?? draftFormat,
-        wordCount:
-          draft?.wordCount ??
-          draft?.word_count ??
-          (typeof draft?.wordCount === "number" ? draft.wordCount : null),
-        matchScore: draft?.matchScore ?? draft?.score ?? data?.matchScore ?? null,
-        warnings: Array.isArray(data?.warnings)
-          ? data.warnings
-          : Array.isArray(draft?.warnings)
-          ? draft.warnings
-          : [],
-      });
+      const { warnings } = applyDraftFromResponse(data);
+      setStatusWarnings(warnings);
       pushToast("success", "Draft loaded. Feel free to edit below.");
     } catch (error) {
       console.error("Failed to load draft", error);
       pushToast("error", error.message || "Unable to load draft.");
     } finally {
       setLoadingDraft(false);
-    }
-  };
-
-  const handleRequestChanges = async () => {
-    if (!submissionId) {
-      pushToast("info", "Create a submission first.");
-      return;
-    }
-    if (!changeInstructions.trim() && changeMode === "regenerate") {
-      pushToast("info", "Tell us what to change before requesting a new draft.");
-      return;
-    }
-    setChangingDraft(true);
-    try {
-      const operation = changeMode === "regenerate" ? "regenerateDraft" : "applyEdits";
-      const data = await callCoverLetter(operation, {
-        instructions: changeInstructions,
-        currentDraft: draftContent,
-        format: draftFormat,
-      });
-      const draft = data?.draft ?? data;
-      const text =
-        draft?.text ??
-        draft?.content ??
-        draft?.body ??
-        (typeof draft === "string" ? draft : "");
-      setDraftContent(text || "");
-      setDraftDetails((prev) => ({
-        format: draft?.format ?? draftFormat,
-        wordCount:
-          draft?.wordCount ??
-          draft?.word_count ??
-          prev?.wordCount ?? null,
-        matchScore: draft?.matchScore ?? draft?.score ?? prev?.matchScore ?? null,
-        warnings: Array.isArray(data?.warnings)
-          ? data.warnings
-          : Array.isArray(draft?.warnings)
-          ? draft.warnings
-          : prev?.warnings ?? [],
-      }));
-      pushToast("success", "Draft updated with your changes.");
-    } catch (error) {
-      console.error("Failed to request changes", error);
-      pushToast("error", error.message || "Unable to update draft.");
-    } finally {
-      setChangingDraft(false);
     }
   };
 
@@ -508,17 +495,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
       setDeleting(false);
     }
   };
-
-  const statusLabel = useMemo(() => {
-    if (!submissionStatus) return "Waiting";
-    if (typeof submissionStatus === "string") {
-      return submissionStatus.replace(/_/g, " ");
-    }
-    if (submissionStatus?.label) return submissionStatus.label;
-    if (submissionStatus?.status) return submissionStatus.status;
-    if (submissionStatus?.state) return submissionStatus.state;
-    return "Waiting";
-  }, [submissionStatus]);
 
   const draftWordCount = draftDetails?.wordCount;
   const draftWarnings = draftDetails?.warnings ?? [];
@@ -647,17 +623,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
               </button>
             </div>
 
-            <dl className="cover-letter-meta">
-              <div>
-                <dt>Submission ID</dt>
-                <dd>{submissionId ? <code>{submissionId}</code> : "—"}</dd>
-              </div>
-              <div>
-                <dt>Current status</dt>
-                <dd className="status-chip">{statusLabel}</dd>
-              </div>
-            </dl>
-
             {statusWarnings.length > 0 && (
               <ul className="cover-letter-warning-list">
                 {statusWarnings.map((warning, index) => (
@@ -758,52 +723,6 @@ export function CoverLetterWorkspace({ variant = "standalone" }) {
                 ))}
               </ul>
             )}
-
-            <div className="change-request">
-              <label>
-                <span>Request changes</span>
-                <textarea
-                  value={changeInstructions}
-                  onChange={(event) => setChangeInstructions(event.target.value)}
-                  placeholder="Tell us how to tweak the draft..."
-                  rows={4}
-                />
-              </label>
-              <div className="change-controls">
-                <div className="change-mode">
-                  <label>
-                    <input
-                      type="radio"
-                      name="cover-letter-change-mode"
-                      value="apply"
-                      checked={changeMode === "apply"}
-                      onChange={() => setChangeMode("apply")}
-                    />
-                    Apply edits
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="cover-letter-change-mode"
-                      value="regenerate"
-                      checked={changeMode === "regenerate"}
-                      onChange={() => setChangeMode("regenerate")}
-                    />
-                    Regenerate draft
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={handleRequestChanges}
-                  disabled={!submissionId || changingDraft}
-                  aria-busy={changingDraft}
-                >
-                  {changingDraft ? <IconLoader /> : null}
-                  {changingDraft ? "Updating…" : "Send to webhook"}
-                </button>
-              </div>
-            </div>
 
             {approvalResult && (
               <div className="cover-letter-result">

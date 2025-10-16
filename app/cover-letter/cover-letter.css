@@ -1,8 +1,3 @@
-.cover-letter-page {
-  position: relative;
-  background: var(--surface-background);
-}
-
 .cover-letter-card {
   gap: 24px;
 }
@@ -89,8 +84,7 @@
 .cover-letter-info-grid label,
 .cover-letter-textarea,
 .cover-letter-file,
-.cover-letter-draft-editor,
-.change-request label {
+.cover-letter-draft-editor {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -100,7 +94,6 @@
 
 .cover-letter-info-grid input,
 .cover-letter-textarea textarea,
-.change-request textarea,
 .cover-letter-draft-editor textarea {
   border-radius: 14px;
   border: 1px solid var(--input-border);
@@ -113,13 +106,11 @@
 }
 
 .cover-letter-textarea textarea,
-.change-request textarea,
 .cover-letter-draft-editor textarea {
   line-height: 1.5;
 }
 
 .cover-letter-textarea textarea:focus,
-.change-request textarea:focus,
 .cover-letter-draft-editor textarea:focus,
 .cover-letter-info-grid input:focus {
   outline: none;
@@ -129,7 +120,6 @@
 }
 
 .cover-letter-textarea textarea::placeholder,
-.change-request textarea::placeholder,
 .cover-letter-info-grid input::placeholder {
   color: var(--input-placeholder);
 }
@@ -153,37 +143,6 @@
 .cover-letter-actions .button.secondary,
 .cover-letter-actions .button.tertiary {
   min-width: 0;
-}
-
-.cover-letter-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-
-.cover-letter-meta dt {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin: 0 0 4px;
-}
-
-.cover-letter-meta dd {
-  margin: 0;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 4px 14px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.14);
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 0.9rem;
 }
 
 .cover-letter-warning-list {
@@ -245,39 +204,6 @@
 .draft-meta strong {
   font-size: 1rem;
   color: var(--text-primary);
-}
-
-.change-request {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-top: 1px solid var(--card-border);
-  padding-top: 14px;
-}
-
-.change-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-.change-mode {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-}
-
-.change-mode label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.change-mode input {
-  accent-color: var(--info);
 }
 
 .cover-letter-result {
