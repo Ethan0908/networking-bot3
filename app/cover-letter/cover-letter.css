@@ -1,3 +1,7 @@
+.cover-letter-page {
+  background: var(--surface-background);
+}
+
 .cover-letter-card {
   gap: 24px;
 }
