@@ -164,7 +164,7 @@
   align-items: center;
 }
 
-.draft-toolbar label {
+draft-toolbar label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -205,7 +205,7 @@
   margin-bottom: 4px;
 }
 
-.draft-meta strong {
+draft-meta strong {
   font-size: 1rem;
   color: var(--text-primary);
 }
