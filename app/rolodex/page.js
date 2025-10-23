@@ -1798,7 +1798,7 @@ export default function Rolodex() {
     setManualEmailRows(manualRows);
     setAiResults([]);
     setSendResults([]);
-    setSendingDraft(null);
+    setSendingDraftId(null);
     pushToast(
       "success",
       `Prepared ${results.length} email${results.length === 1 ? "" : "s"} from your template.`,
