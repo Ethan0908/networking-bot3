@@ -1,6 +1,7 @@
 "use client";
 import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CoverLetterWorkspace } from "../cover-letter/workspace";
 import "./rolodex.css";
 
 function IconLoader(props) {
@@ -139,8 +140,6 @@ const RESPONSE_RECIPIENT_KEYS = [
 ];
 const RESPONSE_SUBJECT_KEYS = ["subject", "title", "headline"];
 const RESPONSE_CONTENT_KEYS = ["body", "html", "text", "content", "message"];
-const RESPONSE_RECIPIENT_KEYS = ["to", "recipient", "recipients", "email", "address"];
-const RESPONSE_CONTENT_KEYS = ["subject", "body", "html", "text", "content", "message"];
 
 function buildRewriteGuide(body) {
   if (!body) return "";
@@ -244,9 +243,12 @@ function isEmailLikeRecord(value) {
     return false;
   }
   const keys = Object.keys(value);
-  const hasRecipient = keys.some((key) => RESPONSE_RECIPIENT_KEYS.includes(key));
+  const hasRecipient = keys.some((key) =>
+    RESPONSE_RECIPIENT_KEYS.includes(key),
+  );
+  const hasSubject = keys.some((key) => RESPONSE_SUBJECT_KEYS.includes(key));
   const hasContent = keys.some((key) => RESPONSE_CONTENT_KEYS.includes(key));
-  return hasRecipient || hasContent;
+  return hasRecipient || hasSubject || hasContent;
 }
 
 function extractRewriteResponseEmails(payload) {
@@ -256,6 +258,77 @@ function extractRewriteResponseEmails(payload) {
   const rows = [];
   const seen = new Set();
   const visited = typeof WeakSet === "function" ? new WeakSet() : null;
+
+  const extractFirstString = (value, localVisited) => {
+    if (value == null) {
+      return "";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (typeof value !== "object") {
+      return "";
+    }
+    const tracker =
+      localVisited || (typeof WeakSet === "function" ? new WeakSet() : null);
+    if (tracker) {
+      if (tracker.has(value)) {
+        return "";
+      }
+      tracker.add(value);
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const candidate = extractFirstString(item, tracker);
+        if (candidate) {
+          return candidate;
+        }
+      }
+      return "";
+    }
+    const entries = Object.entries(value);
+    for (const [, nested] of entries) {
+      if (typeof nested === "string" && nested) {
+        return nested;
+      }
+    }
+    for (const [, nested] of entries) {
+      const candidate = extractFirstString(nested, tracker);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return "";
+  };
+
+  const resolveRecordField = (record, keys) => {
+    if (!record || typeof record !== "object") {
+      return "";
+    }
+    const normalizedKeys = keys.map((key) => String(key).toLowerCase());
+    for (const [rawKey, value] of Object.entries(record)) {
+      const normalized = String(rawKey).toLowerCase();
+      if (!normalizedKeys.includes(normalized)) {
+        continue;
+      }
+      const extracted = extractFirstString(value);
+      if (extracted) {
+        return extracted;
+      }
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        const extracted = extractFirstString(record[key]);
+        if (extracted) {
+          return extracted;
+        }
+      }
+    }
+    return "";
+  };
 
   const visit = (value, path = "$") => {
     if (value && typeof value === "object") {
@@ -293,6 +366,9 @@ function extractRewriteResponseEmails(payload) {
     rows.push({
       path,
       json: jsonString,
+      email: resolveRecordField(candidate, RESPONSE_RECIPIENT_KEYS),
+      subject: resolveRecordField(candidate, RESPONSE_SUBJECT_KEYS),
+      body: resolveRecordField(candidate, RESPONSE_CONTENT_KEYS),
     });
   };
 
@@ -530,7 +606,10 @@ export default function Rolodex() {
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
-  const [sendingDraftId, setSendingDraftId] = useState(null);
+  const [manualEmailRows, setManualEmailRows] = useState([]);
+  const [responseSending, setResponseSending] = useState({});
+  const [responseBodyEdits, setResponseBodyEdits] = useState({});
+  const [sendingDraft, setSendingDraft] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
   const [campaignCompany, setCampaignCompany] = useState(
@@ -1287,114 +1366,12 @@ export default function Rolodex() {
     [rewriteResponse],
   );
 
-  const requestPreview = useMemo(() => {
+  const showResponseSection = hasManualRows || Boolean(rewriteResponse);
+
+  const templateReady = useMemo(() => {
     const trimmedSubject = subject.trim();
     const trimmedBody = emailBody.trim();
     if (!trimmedSubject || !trimmedBody) {
-      return null;
-    }
-    if (bodyMissingDraft || !hasValidToValue || invalidToChips.length > 0) {
-      return null;
-    }
-    if (!hasValidContactEmail) {
-      return null;
-    }
-
-    const contactsPayload = contactsWithEmails.map((contact) => {
-      const normalized = { ...contact };
-      const name = resolveContactName(contact);
-      if (name) {
-        if (!normalized.name) {
-          normalized.name = name;
-        }
-        if (!normalized.full_name && !normalized.fullName) {
-          normalized.full_name = name;
-        }
-      }
-      const emailValue = resolveContactEmail(contact);
-      if (emailValue && !normalized.email) {
-        normalized.email = emailValue;
-      }
-      delete normalized.__contactId;
-      return normalized;
-    });
-
-    if (contactsPayload.length === 0) {
-      return null;
-    }
-
-    const serialisedTo = Array.isArray(toChips)
-      ? toChips.filter((item) => item && typeof item === "string").join(", ")
-      : typeof toChips === "string"
-      ? toChips
-      : "";
-
-    const templatePayload = {
-      to: serialisedTo,
-      subject: trimmedSubject,
-      body: trimmedBody,
-      repeat: { over: "contacts", as: "contact" },
-    };
-
-    const studentContext = studentName || studentSchool
-      ? { name: studentName || null, school: studentSchool || null }
-      : null;
-
-    const dataset = {
-      student: studentContext,
-      role: campaignRole || null,
-      company: campaignCompany || null,
-      contacts: contactsPayload,
-    };
-
-    const rewriteGuide = buildRewriteGuide(trimmedBody);
-
-    const options = {
-      batchSize: Math.max(DEFAULT_BATCH_SIZE, contactsPayload.length || 1),
-      dryRun: true,
-      rewriteGuide,
-    };
-
-    return {
-      action: "email",
-      template: { ...templatePayload, rewriteGuide },
-      dataset: { ...dataset, rewriteGuide },
-      options,
-    };
-  }, [
-    bodyMissingDraft,
-    campaignCompany,
-    campaignRole,
-    contactsWithEmails,
-    emailBody,
-    hasValidContactEmail,
-    hasValidToValue,
-    invalidToChips,
-    resolveContactEmail,
-    resolveContactName,
-    studentName,
-    studentSchool,
-    subject,
-    toChips,
-  ]);
-
-  const requestPreviewJson = useMemo(
-    () => (requestPreview ? JSON.stringify(requestPreview, null, 2) : ""),
-    [requestPreview]
-  );
-
-  const responseEmailRows = useMemo(
-    () => extractRewriteResponseEmails(rewriteResponse),
-    [rewriteResponse]
-  );
-
-  const rewriteResponseJson = useMemo(
-    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
-    [rewriteResponse]
-  );
-
-  const canGenerate = useMemo(() => {
-    if (isGenerating) {
       return false;
     }
     if (!hasValidToValue || invalidToChips.length > 0) {
@@ -1628,11 +1605,15 @@ export default function Rolodex() {
       }));
       setAiResults(normalizedEmails);
       const timestamp = new Date().toISOString();
-      const rawSendResults = Array.isArray(data?.sendResults) ? data.sendResults : [];
+      const rawSendResults = Array.isArray(data?.sendResults)
+        ? data.sendResults
+        : [];
       const normalizedSendResults = normalizedEmails.map((item, index) => {
         const result = rawSendResults[index] ?? null;
         const toAddress =
-          (result && typeof result.to === "string" && result.to.trim()) || item.to || "";
+          (result && typeof result.to === "string" && result.to.trim()) ||
+          item.to ||
+          "";
         return {
           id: item.id,
           to: toAddress,
@@ -1675,7 +1656,8 @@ export default function Rolodex() {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate drafts.";
+      const message =
+        error instanceof Error ? error.message : "Failed to generate drafts.";
       setAiResults([]);
       setSendResults([]);
       pushToast("error", message);
@@ -1857,30 +1839,36 @@ export default function Rolodex() {
           return { ...item, [field]: value };
         }
         return item;
-      })
+      }),
     );
     setSendResults((prev) =>
       prev.map((item, itemIndex) => {
-        if ((updatedId && item.id === updatedId) || (!updatedId && itemIndex === index)) {
+        if (
+          (updatedId && item.id === updatedId) ||
+          (!updatedId && itemIndex === index)
+        ) {
           return { ...item, success: false, error: "", lastAttemptedAt: null };
         }
         return item;
-      })
+      }),
     );
   }, []);
 
   const sendResultMap = useMemo(() => {
     const map = new Map();
-    for (const item of sendResults) {
-      if (item && item.id) {
-        map.set(item.id, item);
+    sendResults.forEach((item, itemIndex) => {
+      if (!item) {
+        return;
       }
-    }
+      const key = item.id ?? `draft-${item.index ?? itemIndex}`;
+      map.set(key, item);
+    });
     return map;
   }, [sendResults]);
 
   const handleSendDraft = useCallback(
-    async (index) => {
+    async (index, options = {}) => {
+      const provider = options.provider === "gmail" ? "gmail" : "default";
       const draft = aiResults[index];
       if (!draft) {
         pushToast("error", "Unable to locate this draft.");
@@ -1891,7 +1879,12 @@ export default function Rolodex() {
         pushToast("error", "Add a recipient before sending.");
         return;
       }
-      setSendingDraftId(draft.id);
+      if (provider === "gmail" && gmailStatus !== "connected") {
+        pushToast("error", "Connect Gmail before sending via Gmail.");
+        return;
+      }
+      const draftKey = draft.id ?? `draft-${index}`;
+      setSendingDraft({ id: draftKey, provider });
       const attemptedAt = new Date().toISOString();
       try {
         const response = await fetch("/api/send-email", {
@@ -1917,13 +1910,29 @@ export default function Rolodex() {
         }
         setSendResults((prev) => {
           const next = [...prev];
-          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const existingIndex = next.findIndex((item, itemIndex) => {
+            if (!item) {
+              return false;
+            }
+            if (item.id === draftKey) {
+              return true;
+            }
+            if (draft.id && item.id === draft.id) {
+              return true;
+            }
+            if (!draft.id && !item.id && itemIndex === index) {
+              return true;
+            }
+            return false;
+          });
           const base = {
-            id: draft.id,
+            id: draftKey,
+            index,
             to: recipient,
             success: true,
             error: "",
             lastAttemptedAt: attemptedAt,
+            provider,
           };
           if (existingIndex >= 0) {
             next[existingIndex] = { ...next[existingIndex], ...base };
@@ -1932,19 +1941,41 @@ export default function Rolodex() {
           }
           return next;
         });
-        pushToast("success", `Email sent to ${recipient}.`);
+        const successMessage =
+          provider === "gmail"
+            ? `Gmail message sent to ${recipient}.`
+            : `Email sent to ${recipient}.`;
+        pushToast("success", successMessage);
       } catch (error) {
         const message =
-          error instanceof Error && error.message ? error.message : "Failed to send email.";
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to send email.";
         setSendResults((prev) => {
           const next = [...prev];
-          const existingIndex = next.findIndex((item) => item.id === draft.id);
+          const existingIndex = next.findIndex((item, itemIndex) => {
+            if (!item) {
+              return false;
+            }
+            if (item.id === draftKey) {
+              return true;
+            }
+            if (draft.id && item.id === draft.id) {
+              return true;
+            }
+            if (!draft.id && !item.id && itemIndex === index) {
+              return true;
+            }
+            return false;
+          });
           const base = {
-            id: draft.id,
+            id: draftKey,
+            index,
             to: recipient,
             success: false,
             error: message,
             lastAttemptedAt: attemptedAt,
+            provider,
           };
           if (existingIndex >= 0) {
             next[existingIndex] = { ...next[existingIndex], ...base };
@@ -1955,10 +1986,72 @@ export default function Rolodex() {
         });
         pushToast("error", message);
       } finally {
-        setSendingDraftId(null);
+        setSendingDraft(null);
       }
     },
-    [aiResults, pushToast]
+    [aiResults, gmailStatus, pushToast],
+  );
+
+  const handleSendResponseRow = useCallback(
+    async (index) => {
+      const row = responseEmailRows[index];
+      if (!row) {
+        pushToast("error", "Unable to locate this response.");
+        return;
+      }
+      const recipient = (row.email || "").trim();
+      if (!recipient) {
+        pushToast("error", "This response does not include an email address.");
+        return;
+      }
+      const subjectValue = String(row.subject ?? "");
+      const bodySource = row.body ?? row.json ?? "";
+      const originalBody =
+        typeof bodySource === "string"
+          ? bodySource
+          : bodySource != null
+            ? String(bodySource)
+            : "";
+      const bodyValue = responseBodyEdits[index] ?? originalBody;
+      setResponseSending((prev) => ({ ...prev, [index]: true }));
+      try {
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: recipient,
+            subject: subjectValue,
+            html: bodyValue,
+          }),
+        });
+        let errorMessage = "";
+        if (!response.ok) {
+          try {
+            const payload = await response.json();
+            if (payload && typeof payload === "object" && payload.error) {
+              errorMessage = String(payload.error);
+            }
+          } catch {
+            errorMessage = response.statusText || "Failed to send email.";
+          }
+          throw new Error(errorMessage || "Failed to send email.");
+        }
+        pushToast("success", `Email sent to ${recipient}.`);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to send email.";
+        pushToast("error", message);
+      } finally {
+        setResponseSending((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
+      }
+    },
+    [pushToast, responseBodyEdits, responseEmailRows],
   );
 
   const handleDownloadResults = useCallback(
@@ -2292,6 +2385,7 @@ export default function Rolodex() {
     { id: "view", label: "View" },
     { id: "update", label: "Update" },
     { id: "email", label: "Email" },
+    { id: "cover", label: "Cover letter" },
   ];
 
   const viewRecords = useMemo(() => {
@@ -3021,44 +3115,150 @@ export default function Rolodex() {
                         </span>
                       </div>
                     </div>
-                    <pre className="preview-body">{previewContent.body || ""}</pre>
-                    {requestPreviewJson ? (
-                      <div className="preview-json">
-                        <span className="preview-meta-label">Request JSON</span>
-                        <pre className="preview-json-body">{requestPreviewJson}</pre>
-                      </div>
-                    ) : null}
+                    <pre className="preview-body">
+                      {previewContent.body || ""}
+                    </pre>
                   </div>
                 )}
-                {rewriteResponse && (
+                {showResponseSection && (
                   <div className="preview-response" aria-live="polite">
-                    <span className="preview-meta-label">Response JSON</span>
+                    <div className="preview-response-toolbar">
+                      <span className="preview-response-title">Response</span>
+                    </div>
                     {responseEmailRows.length > 0 ? (
-                      <div className="preview-response-table-wrapper">
-                        <table className="preview-response-table">
+                      <div
+                        className="table-scroll preview-response-scroll"
+                        role="group"
+                        aria-label="Response"
+                      >
+                        <table className="view-table preview-response-table">
                           <thead>
                             <tr>
-                              <th scope="col">#</th>
-                              <th scope="col">Location</th>
-                              <th scope="col">JSON</th>
+                              <th
+                                scope="col"
+                                className="preview-response-index-header"
+                              >
+                                #
+                              </th>
+                              <th scope="col">Email</th>
+                              <th scope="col">Subject</th>
+                              <th scope="col">Body</th>
+                              <th
+                                scope="col"
+                                className="preview-response-actions-header"
+                              >
+                                Send
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {responseEmailRows.map((row, index) => (
-                              <tr key={`${row.path}-${index}`}>
-                                <td>{index + 1}</td>
-                                <td className="preview-response-path">{row.path}</td>
-                                <td>
-                                  <pre className="preview-response-json">{row.json}</pre>
-                                </td>
-                              </tr>
-                            ))}
+                            {responseEmailRows.map((row, index) => {
+                              const rowKey = row.path
+                                ? `${row.path}-${index}`
+                                : index;
+                              const recipientValue =
+                                typeof row.email === "string"
+                                  ? row.email.trim()
+                                  : row.email != null
+                                    ? String(row.email)
+                                    : "";
+                              const subjectValue =
+                                typeof row.subject === "string"
+                                  ? row.subject
+                                  : row.subject != null
+                                    ? String(row.subject)
+                                    : "";
+                              const bodySource = row.body ?? row.json ?? "";
+                              const originalBodyValue =
+                                typeof bodySource === "string"
+                                  ? bodySource
+                                  : bodySource != null
+                                    ? String(bodySource)
+                                    : "";
+                              const editedBodyValue = responseBodyEdits[index];
+                              const bodyValue =
+                                typeof editedBodyValue === "string"
+                                  ? editedBodyValue
+                                  : originalBodyValue;
+                              const hasRecipient = recipientValue.length > 0;
+                              const isSendingRow = Boolean(
+                                responseSending[index],
+                              );
+                              const sendDisabled =
+                                isSendingRow || !hasRecipient;
+                              const buttonTitle = hasRecipient
+                                ? undefined
+                                : "Response is missing an email address.";
+                              return (
+                                <tr key={rowKey}>
+                                  <td className="preview-response-index">
+                                    {index + 1}
+                                  </td>
+                                  <td className="preview-response-email">
+                                    {recipientValue || "—"}
+                                  </td>
+                                  <td className="preview-response-subject">
+                                    {subjectValue || "—"}
+                                  </td>
+                                  <td className="preview-response-body">
+                                    <textarea
+                                      className="preview-response-body-input"
+                                      value={bodyValue}
+                                      aria-label={
+                                        subjectValue
+                                          ? `Email body for ${subjectValue}`
+                                          : `Email body for response ${index + 1}`
+                                      }
+                                      onChange={(event) => {
+                                        const nextValue = event.target.value;
+                                        setResponseBodyEdits((prev) => {
+                                          if (nextValue === originalBodyValue) {
+                                            if (!(index in prev)) {
+                                              return prev;
+                                            }
+                                            const next = { ...prev };
+                                            delete next[index];
+                                            return next;
+                                          }
+                                          return {
+                                            ...prev,
+                                            [index]: nextValue,
+                                          };
+                                        });
+                                      }}
+                                      placeholder="Response body"
+                                    />
+                                  </td>
+                                  <td className="preview-response-send-cell">
+                                    <button
+                                      type="button"
+                                      className="button secondary small preview-response-send-button"
+                                      onClick={() =>
+                                        handleSendResponseRow(index)
+                                      }
+                                      disabled={sendDisabled}
+                                      aria-busy={isSendingRow}
+                                      title={buttonTitle}
+                                    >
+                                      {isSendingRow ? (
+                                        <IconLoader />
+                                      ) : (
+                                        <IconMail className="preview-response-send-icon" />
+                                      )}
+                                      {isSendingRow ? "Sending…" : "Send"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
-                    ) : (
-                      <pre className="preview-json-body">{rewriteResponseJson}</pre>
-                    )}
+                    ) : rewriteResponse ? (
+                      <pre className="preview-body-pre preview-response-raw">
+                        {rewriteResponseJson}
+                      </pre>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -3086,27 +3286,152 @@ export default function Rolodex() {
                   </div>
                   <div className="ai-results-list">
                     {aiResults.map((result, index) => {
-                      const sendInfo = sendResultMap.get(result.id);
+                      const rowId = result.id ?? `draft-${index}`;
+                      const sendInfo = sendResultMap.get(rowId);
                       const statusText = sendInfo
                         ? sendInfo.success
-                          ? "Sent successfully."
+                          ? sendInfo.provider === "gmail"
+                            ? "Sent with Gmail."
+                            : "Sent successfully."
                           : sendInfo.error
-                          ? "Failed to send."
-                          : "Ready to send."
+                            ? "Failed to send."
+                            : "Ready to send."
                         : "Ready to send.";
-                      const statusDetail = sendInfo?.error ? sendInfo.error : null;
+                      const statusDetail = sendInfo?.error
+                        ? sendInfo.error
+                        : null;
                       const lastAttempt =
                         sendInfo?.lastAttemptedAt &&
                         formatTimestamp(sendInfo.lastAttemptedAt);
-                      const isSending = sendingDraftId === result.id;
+                      const isSending = sendingDraft?.id === rowId;
+                      const sendingProvider = isSending
+                        ? sendingDraft?.provider
+                        : null;
+                      const isSendingDefault =
+                        isSending && sendingProvider === "default";
+                      const isSendingGmail =
+                        isSending && sendingProvider === "gmail";
+                      const gmailDisabled =
+                        isSending ||
+                        gmailStatus !== "connected" ||
+                        Boolean(
+                          sendInfo?.provider === "gmail" && sendInfo?.success,
+                        );
                       return (
                         <div
                           key={result.id || index}
                           className={`ai-result${result.excluded ? " excluded" : ""}`}
                         >
-                        <div className="ai-result-header">
-                          <h4>Contact {index + 1}</h4>
-                          <div className="ai-result-buttons">
+                          <div className="ai-result-header">
+                            <h4>Contact {index + 1}</h4>
+                            <div className="ai-result-buttons">
+                              <button
+                                type="button"
+                                className="button tertiary"
+                                onClick={() => handleToggleResultEdit(index)}
+                              >
+                                {result.isEditing ? "Done" : "Edit"}
+                              </button>
+                              <button
+                                type="button"
+                                className={`button ghost${result.excluded ? " active" : ""}`}
+                                onClick={() => handleToggleResultExclude(index)}
+                              >
+                                {result.excluded ? "Include" : "Exclude"}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="ai-result-field">
+                            <span className="ai-result-label">To</span>
+                            {result.isEditing ? (
+                              <input
+                                className="text-input"
+                                value={result.to}
+                                onChange={(event) =>
+                                  handleResultFieldChange(
+                                    index,
+                                    "to",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span className="ai-result-value">
+                                {result.to || "—"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="ai-result-field">
+                            <span className="ai-result-label">Subject</span>
+                            {result.isEditing ? (
+                              <input
+                                className="text-input"
+                                value={result.subject}
+                                onChange={(event) =>
+                                  handleResultFieldChange(
+                                    index,
+                                    "subject",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span className="ai-result-value">
+                                {result.subject || "—"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="ai-result-field">
+                            <span className="ai-result-label">Body</span>
+                            {result.isEditing ? (
+                              <textarea
+                                className="text-area"
+                                value={result.body}
+                                onChange={(event) =>
+                                  handleResultFieldChange(
+                                    index,
+                                    "body",
+                                    event.target.value,
+                                  )
+                                }
+                                rows={6}
+                              />
+                            ) : (
+                              <pre className="ai-result-body-text">
+                                {result.body || ""}
+                              </pre>
+                            )}
+                          </div>
+                          <div className="ai-result-footer">
+                            <div
+                              className={`send-status${
+                                sendInfo?.success
+                                  ? " success"
+                                  : sendInfo?.error
+                                    ? " error"
+                                    : ""
+                              }`}
+                            >
+                              <span
+                                className="send-status-dot"
+                                aria-hidden="true"
+                              />
+                              <div className="send-status-text">
+                                <span className="send-status-message">
+                                  {statusText}
+                                </span>
+                                {statusDetail ? (
+                                  <span className="send-status-subtext">
+                                    {statusDetail}
+                                  </span>
+                                ) : null}
+                                {lastAttempt ? (
+                                  <span className="send-status-subtext">
+                                    Last attempted {lastAttempt}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
                             <button
                               type="button"
                               className="button secondary small"
@@ -3143,85 +3468,17 @@ export default function Rolodex() {
                             </button>
                           </div>
                         </div>
-                        <div className="ai-result-field">
-                          <span className="ai-result-label">To</span>
-                          {result.isEditing ? (
-                            <input
-                              className="text-input"
-                              value={result.to}
-                              onChange={(event) =>
-                                handleResultFieldChange(index, "to", event.target.value)
-                              }
-                            />
-                          ) : (
-                            <span className="ai-result-value">{result.to || "—"}</span>
-                          )}
-                        </div>
-                        <div className="ai-result-field">
-                          <span className="ai-result-label">Subject</span>
-                          {result.isEditing ? (
-                            <input
-                              className="text-input"
-                              value={result.subject}
-                              onChange={(event) =>
-                                handleResultFieldChange(index, "subject", event.target.value)
-                              }
-                            />
-                          ) : (
-                            <span className="ai-result-value">{result.subject || "—"}</span>
-                          )}
-                        </div>
-                          <div className="ai-result-field">
-                            <span className="ai-result-label">Body</span>
-                            {result.isEditing ? (
-                            <textarea
-                              className="text-area"
-                              value={result.body}
-                              onChange={(event) =>
-                                handleResultFieldChange(index, "body", event.target.value)
-                              }
-                              rows={6}
-                            />
-                          ) : (
-                            <pre className="ai-result-body-text">{result.body || ""}</pre>
-                            )}
-                          </div>
-                          <div className="ai-result-footer">
-                            <div
-                              className={`send-status${
-                                sendInfo?.success ? " success" : sendInfo?.error ? " error" : ""
-                              }`}
-                            >
-                              <span className="send-status-dot" aria-hidden="true" />
-                              <div className="send-status-text">
-                                <span className="send-status-message">{statusText}</span>
-                                {statusDetail ? (
-                                  <span className="send-status-subtext">{statusDetail}</span>
-                                ) : null}
-                                {lastAttempt ? (
-                                  <span className="send-status-subtext">
-                                    Last attempted {lastAttempt}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="button secondary small"
-                              onClick={() => handleSendDraft(index)}
-                              disabled={Boolean(sendInfo?.success) || isSending}
-                              aria-busy={isSending}
-                            >
-                              {isSending ? <IconLoader /> : null}
-                              {sendInfo?.success ? "Sent" : "Send"}
-                            </button>
-                          </div>
-                        </div>
                       );
                     })}
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {activePage === "cover" && (
+            <div role="tabpanel" id="cover-panel" aria-labelledby="cover-tab">
+              <CoverLetterWorkspace variant="embedded" />
             </div>
           )}
         </div>
