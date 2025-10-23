@@ -139,8 +139,6 @@ const RESPONSE_RECIPIENT_KEYS = [
 ];
 const RESPONSE_SUBJECT_KEYS = ["subject", "title", "headline"];
 const RESPONSE_CONTENT_KEYS = ["body", "html", "text", "content", "message"];
-const RESPONSE_RECIPIENT_KEYS = ["to", "recipient", "recipients", "email", "address"];
-const RESPONSE_CONTENT_KEYS = ["subject", "body", "html", "text", "content", "message"];
 
 function buildRewriteGuide(body) {
   if (!body) return "";
@@ -530,6 +528,7 @@ export default function Rolodex() {
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
+  const [manualEmailRows, setManualEmailRows] = useState([]);
   const [sendingDraftId, setSendingDraftId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
@@ -1293,7 +1292,7 @@ export default function Rolodex() {
     if (!trimmedSubject || !trimmedBody) {
       return null;
     }
-    if (bodyMissingDraft || !hasValidToValue || invalidToChips.length > 0) {
+    if (!hasDraftToken || !hasValidToValue || invalidToChips.length > 0) {
       return null;
     }
     if (!hasValidContactEmail) {
@@ -1362,7 +1361,7 @@ export default function Rolodex() {
       options,
     };
   }, [
-    bodyMissingDraft,
+    hasDraftToken,
     campaignCompany,
     campaignRole,
     contactsWithEmails,
@@ -1381,16 +1380,6 @@ export default function Rolodex() {
   const requestPreviewJson = useMemo(
     () => (requestPreview ? JSON.stringify(requestPreview, null, 2) : ""),
     [requestPreview]
-  );
-
-  const responseEmailRows = useMemo(
-    () => extractRewriteResponseEmails(rewriteResponse),
-    [rewriteResponse]
-  );
-
-  const rewriteResponseJson = useMemo(
-    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
-    [rewriteResponse]
   );
 
   const canGenerate = useMemo(() => {
@@ -1412,7 +1401,7 @@ export default function Rolodex() {
     subject,
   ]);
 
-  const canGenerate = templateReady && !isGenerating;
+  const templateReady = Boolean(requestPreview);
   const canBuildTemplate = templateReady && !isGenerating;
 
   useEffect(() => {
