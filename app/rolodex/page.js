@@ -218,6 +218,9 @@ function extractImportRecords(payload) {
   if (!payload) {
     return [];
   }
+  if (typeof payload === "string") {
+    return [payload];
+  }
   if (Array.isArray(payload)) {
     return payload;
   }
@@ -237,6 +240,141 @@ function extractImportRecords(payload) {
     return [payload];
   }
   return [];
+}
+
+function normalizeCsvHeader(header, index) {
+  if (header == null) {
+    return `field_${index}`;
+  }
+  const trimmed = String(header).trim();
+  if (!trimmed) {
+    return `field_${index}`;
+  }
+  const normalized = trimmed.toLowerCase();
+  switch (normalized) {
+    case "full name":
+    case "name":
+      return "full_name";
+    case "email address":
+      return "email";
+    case "linkedin":
+    case "linkedin url":
+    case "linkedin profile":
+      return "profile_url";
+    case "profile link":
+      return "profile_url";
+    case "id":
+    case "contact id":
+      return "contact_id";
+    default: {
+      const snake = normalized
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      if (snake === "") {
+        return `field_${index}`;
+      }
+      if (snake === "email_address") {
+        return "email";
+      }
+      if (snake === "profile") {
+        return "profile_url";
+      }
+      return snake;
+    }
+  }
+}
+
+function parseCsvRows(csvText) {
+  if (!csvText || typeof csvText !== "string") {
+    return [];
+  }
+  const rows = [];
+  let current = "";
+  let row = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index];
+    if (inQuotes) {
+      if (char === "\"") {
+        if (csvText[index + 1] === "\"") {
+          current += "\"";
+          index += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(current);
+      current = "";
+    } else if (char === "\n") {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+    } else if (char === "\r") {
+      // Ignore carriage returns and rely on newline handling.
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current);
+  rows.push(row);
+  return rows;
+}
+
+function parseCsvRecords(csvText) {
+  const rows = parseCsvRows(csvText);
+  if (rows.length === 0) {
+    return [];
+  }
+  const headerRow = rows.shift();
+  if (!headerRow || headerRow.length === 0) {
+    return [];
+  }
+
+  const seen = new Map();
+  const headers = headerRow.map((cell, index) => {
+    const base = normalizeCsvHeader(cell, index);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    if (count === 0) {
+      return base;
+    }
+    return `${base}_${count + 1}`;
+  });
+
+  const records = [];
+  for (const row of rows) {
+    if (!row || row.length === 0) {
+      continue;
+    }
+    const record = {};
+    let hasValue = false;
+    for (let index = 0; index < headers.length; index += 1) {
+      const key = headers[index] ?? `field_${index}`;
+      const raw = index < row.length ? row[index] : "";
+      const value = raw == null ? "" : String(raw).trim();
+      if (value) {
+        hasValue = true;
+      }
+      if (!(key in record)) {
+        record[key] = value;
+      }
+    }
+    if (hasValue) {
+      records.push(record);
+    }
+  }
+  return records;
 }
 
 function formatRelativeTime(value) {
@@ -636,8 +774,6 @@ export default function Rolodex() {
   const [csvFileName, setCsvFileName] = useState("");
   const [csvFileInputKey, setCsvFileInputKey] = useState(0);
   const [csvImportError, setCsvImportError] = useState("");
-  const [webhookSearchTerm, setWebhookSearchTerm] = useState("");
-  const [webhookSearchError, setWebhookSearchError] = useState("");
   const [importResults, setImportResults] = useState([]);
   const [importSelection, setImportSelection] = useState([]);
   const [importSort, setImportSort] = useState({
@@ -655,6 +791,8 @@ export default function Rolodex() {
   const [emailPageSize, setEmailPageSize] = useState(5);
   const [emailPageIndex, setEmailPageIndex] = useState(0);
   const [emailSort, setEmailSort] = useState({ key: "full_name", direction: "asc" });
+  const [viewSearchTerm, setViewSearchTerm] = useState("");
+  const [emailSearchTerm, setEmailSearchTerm] = useState("");
   const [toChips, setToChips] = useState(() => [...DEFAULT_TEMPLATE.to]);
   const [toInputValue, setToInputValue] = useState("");
   const [customPlaceholders, setCustomPlaceholders] = useState([]);
@@ -1148,37 +1286,95 @@ export default function Rolodex() {
 
   const normalizeImportPayload = useCallback(
     (payload) => {
-      const records = extractImportRecords(payload);
+      const rawRecords = extractImportRecords(payload);
+      const expanded = [];
+
+      for (const item of rawRecords) {
+        if (!item) {
+          continue;
+        }
+        if (typeof item === "string") {
+          expanded.push(...parseCsvRecords(item));
+          continue;
+        }
+        if (typeof item === "object") {
+          if (typeof item.data === "string") {
+            const parsed = parseCsvRecords(item.data);
+            if (parsed.length > 0) {
+              expanded.push(...parsed);
+              continue;
+            }
+          } else if (Array.isArray(item.data)) {
+            let handled = false;
+            for (const nested of item.data) {
+              if (!nested) {
+                continue;
+              }
+              if (typeof nested === "string") {
+                expanded.push(...parseCsvRecords(nested));
+                handled = true;
+              } else if (typeof nested === "object") {
+                expanded.push(nested);
+                handled = true;
+              }
+            }
+            if (handled) {
+              continue;
+            }
+          }
+          expanded.push(item);
+        }
+      }
+
       const timestamp = Date.now().toString(36);
-      return records
+      return expanded
         .filter((record) => record && typeof record === "object")
         .map((record, index) => {
-          const contactIdValue = resolveContactId(record);
+          const baseRecord = { ...record };
+          const contactIdValue = resolveContactId(baseRecord);
           const baseId =
             contactIdValue ||
-            record.email ||
-            record.profile_url ||
-            record.profileUrl ||
+            baseRecord.email ||
+            baseRecord.profile_url ||
+            baseRecord.profileUrl ||
+            baseRecord.full_name ||
+            baseRecord.fullName ||
             `row-${index}`;
           const rowId = `import-${baseId}-${timestamp}-${index}`;
+          const raw =
+            baseRecord.raw && typeof baseRecord.raw === "object"
+              ? { ...baseRecord.raw }
+              : { ...baseRecord };
           return {
-            ...record,
+            ...baseRecord,
             __rowId: rowId,
-            contact_id: contactIdValue || record.contact_id || record.contactId || "",
-            full_name: record.full_name ?? record.fullName ?? "",
-            title: record.title ?? "",
-            company: record.company ?? "",
-            location: record.location ?? "",
-            profile_url: record.profile_url ?? record.profileUrl ?? "",
-            email: record.email ?? "",
-            last_updated:
-              record.last_updated ??
-              record.updated_at ??
-              record.updatedAt ??
-              record.last_contacted ??
-              record.lastContacted ??
+            contact_id:
+              contactIdValue ||
+              baseRecord.contact_id ||
+              baseRecord.contactId ||
               "",
-            raw: { ...record },
+            full_name:
+              baseRecord.full_name ??
+              baseRecord.fullName ??
+              baseRecord.name ??
+              "",
+            title: baseRecord.title ?? "",
+            company: baseRecord.company ?? "",
+            location: baseRecord.location ?? "",
+            profile_url:
+              baseRecord.profile_url ??
+              baseRecord.profileUrl ??
+              baseRecord.linkedin ??
+              "",
+            email: baseRecord.email ?? "",
+            last_updated:
+              baseRecord.last_updated ??
+              baseRecord.updated_at ??
+              baseRecord.updatedAt ??
+              baseRecord.last_contacted ??
+              baseRecord.lastContacted ??
+              "",
+            raw,
           };
         });
     },
@@ -1229,6 +1425,7 @@ export default function Rolodex() {
       setPreviewContent(null);
       setEmailRecipients([]);
       setIsSampleEmailContacts(false);
+      setEmailSearchTerm("");
       if (normalized.length === 0) {
         pushToast("info", "No contacts found for this username.");
       } else {
@@ -1242,7 +1439,7 @@ export default function Rolodex() {
       setLoadingContacts(false);
     }
     setEmailPageIndex(0);
-  }, [pushToast, resolveContactId, username]);
+  }, [pushToast, resolveContactId, setEmailSearchTerm, username]);
 
   const handleCsvFileChange = useCallback(
     (event) => {
@@ -1567,8 +1764,50 @@ export default function Rolodex() {
 
   const subjectCharCount = useMemo(() => subject.length, [subject]);
 
-  const emailTableState = useMemo(() => {
+  const emailFilteredContacts = useMemo(() => {
     if (!Array.isArray(emailContacts) || emailContacts.length === 0) {
+      return [];
+    }
+    const query = emailSearchTerm.trim().toLowerCase();
+    if (!query) {
+      return emailContacts;
+    }
+    return emailContacts.filter((contact) => {
+      const values = [
+        contact.__contactId || resolveContactId(contact),
+        resolveContactName(contact),
+        contact.title,
+        contact.company,
+        contact.location,
+        contact.profile_url ?? contact.profileUrl,
+        resolveContactEmail(contact),
+        contact.last_updated ?? contact.updated_at ?? contact.updatedAt ?? "",
+        contact.last_contacted ??
+          contact.last_messaged ??
+          contact.lastMessaged ??
+          contact.last_contacted_at ??
+          "",
+      ];
+      const engagement = computeEngagementStatus(contact);
+      if (engagement?.label) {
+        values.push(engagement.label);
+      }
+      return values.some(
+        (value) =>
+          value && String(value).toLowerCase().includes(query),
+      );
+    });
+  }, [
+    computeEngagementStatus,
+    emailContacts,
+    emailSearchTerm,
+    resolveContactEmail,
+    resolveContactId,
+    resolveContactName,
+  ]);
+
+  const emailTableState = useMemo(() => {
+    if (!Array.isArray(emailFilteredContacts) || emailFilteredContacts.length === 0) {
       return {
         visibleRecords: [],
         totalRecords: 0,
@@ -1576,7 +1815,7 @@ export default function Rolodex() {
         currentPageIndex: 0,
       };
     }
-    const filtered = emailContacts;
+    const filtered = emailFilteredContacts;
 
     const getSortValue = (record) => {
       switch (emailSort.key) {
@@ -1663,7 +1902,7 @@ export default function Rolodex() {
     };
   }, [
     computeEngagementStatus,
-    emailContacts,
+    emailFilteredContacts,
     emailPageIndex,
     emailPageSize,
     emailSort,
@@ -1776,7 +2015,7 @@ export default function Rolodex() {
     pageSize: importResolvedPageSize,
   } = importTableState;
 
-  const emailRecordCount = emailContacts.length;
+  const emailRecordCount = emailFilteredContacts.length;
   const importRecordCount = importResults.length;
 
   useEffect(() => {
@@ -1787,7 +2026,7 @@ export default function Rolodex() {
 
   useEffect(() => {
     setEmailPageIndex(0);
-  }, [emailPageSize, emailRecordCount]);
+  }, [emailPageSize, emailRecordCount, emailSearchTerm]);
 
   useEffect(() => {
     if (currentImportPageIndex !== importPageIndex) {
@@ -1930,7 +2169,7 @@ export default function Rolodex() {
       ? `${importSelectionCount} contact${importSelectionCount === 1 ? "" : "s"} selected.`
       : "No contacts selected.";
   const shouldShowImportResults =
-    importResults.length > 0 || lastAction === "search";
+    importResults.length > 0 || lastAction === "import";
 
   const handleToggleSelectAll = useCallback(
     (ids) => {
@@ -2785,7 +3024,6 @@ export default function Rolodex() {
       setUsernameHighlight(false);
       setContactHighlight(false);
       setCsvImportError("");
-      setWebhookSearchError("");
 
       const trimmedUsernameValue = username.trim();
       const trimmedContactId = contactId.trim();
@@ -2862,18 +3100,6 @@ export default function Rolodex() {
         }
       }
 
-      if (action === "search") {
-        const trimmedQuery = webhookSearchTerm.trim();
-        if (!trimmedQuery) {
-          const message = "Enter a search term to find contacts.";
-          setWebhookSearchError(message);
-          pushToast("error", message);
-          setLoadingAction(null);
-          return;
-        }
-        body.query = trimmedQuery;
-      }
-
       if (action === "import1") {
         if (importSelection.length === 0) {
           const message = "Select at least one contact to import.";
@@ -2928,6 +3154,12 @@ export default function Rolodex() {
           throw new Error(messageText);
         }
         setResponse(data ?? { success: true });
+        if (action === "import") {
+          const normalized = normalizeImportPayload(data);
+          setImportResults(normalized);
+          setImportSelection([]);
+          setImportPageIndex(0);
+        }
         if (action === "create") {
           pushToast("success", "Contact created.");
         } else if (action === "update") {
@@ -2945,13 +3177,6 @@ export default function Rolodex() {
           setCsvFileContent("");
           setCsvFileName("");
           setCsvFileInputKey((prev) => prev + 1);
-        } else if (action === "search") {
-          pushToast("success", "Search request sent.");
-          setWebhookSearchTerm("");
-          const normalized = normalizeImportPayload(data);
-          setImportResults(normalized);
-          setImportSelection([]);
-          setImportPageIndex(0);
         } else if (action === "import1") {
           pushToast("success", "Import requested.");
           setImportSelection([]);
@@ -2980,7 +3205,6 @@ export default function Rolodex() {
       pushToast,
       resetResponses,
       title,
-      webhookSearchTerm,
       username,
     ],
   );
@@ -3210,8 +3434,57 @@ export default function Rolodex() {
     return /^https?:\/\//i.test(value) ? value : `https://${value}`;
   };
 
-  const viewTableState = useMemo(() => {
+  const viewFilteredRecords = useMemo(() => {
     if (!Array.isArray(resolvedViewRecords) || resolvedViewRecords.length === 0) {
+      return [];
+    }
+    const query = viewSearchTerm.trim().toLowerCase();
+    if (!query) {
+      return resolvedViewRecords;
+    }
+    return resolvedViewRecords.filter((record) => {
+      const values = [
+        resolveContactId(record),
+        resolveContactName(record),
+        record.contact_id,
+        record.full_name ?? record.fullName ?? record.name,
+        record.title,
+        record.company,
+        record.location,
+        record.profile_url ?? record.profileUrl,
+        record.email,
+        record.engagement_label ?? record.engagementLabel ?? record.status,
+        record.last_updated ??
+          record.updated_at ??
+          record.updatedAt ??
+          record.created_at ??
+          record.createdAt ??
+          "",
+        record.last_contacted ??
+          record.last_messaged ??
+          record.lastMessaged ??
+          record.last_contacted_at ??
+          "",
+      ];
+      const engagement = computeEngagementStatus(record);
+      if (engagement?.label) {
+        values.push(engagement.label);
+      }
+      return values.some(
+        (value) =>
+          value && String(value).toLowerCase().includes(query),
+      );
+    });
+  }, [
+    computeEngagementStatus,
+    resolveContactId,
+    resolveContactName,
+    resolvedViewRecords,
+    viewSearchTerm,
+  ]);
+
+  const viewTableState = useMemo(() => {
+    if (!Array.isArray(viewFilteredRecords) || viewFilteredRecords.length === 0) {
       return {
         visibleRecords: [],
         totalRecords: 0,
@@ -3219,7 +3492,7 @@ export default function Rolodex() {
         currentPageIndex: 0,
       };
     }
-    const filtered = resolvedViewRecords;
+    const filtered = viewFilteredRecords;
 
     const parseDate = (value) => {
       if (!value) {
@@ -3319,7 +3592,7 @@ export default function Rolodex() {
   }, [
     computeEngagementStatus,
     resolveContactId,
-    resolvedViewRecords,
+    viewFilteredRecords,
     viewPageIndex,
     viewPageSize,
     viewSort,
@@ -3333,7 +3606,7 @@ export default function Rolodex() {
     pageSize: viewResolvedPageSize,
   } = viewTableState;
 
-  const viewRecordCount = resolvedViewRecords.length;
+  const viewRecordCount = viewFilteredRecords.length;
 
   useEffect(() => {
     if (currentViewPageIndex !== viewPageIndex) {
@@ -3343,7 +3616,7 @@ export default function Rolodex() {
 
   useEffect(() => {
     setViewPageIndex(0);
-  }, [viewPageSize, viewRecordCount]);
+  }, [viewPageSize, viewRecordCount, viewSearchTerm]);
 
   const viewPageNumbers = useMemo(() => {
     if (viewTotalPages === 0) {
@@ -3562,43 +3835,6 @@ export default function Rolodex() {
                 </div>
               </form>
 
-              <form className="import-search-form" onSubmit={handleSubmit} noValidate>
-                <div className="field">
-                  <label className="field-label" htmlFor="webhookSearch">
-                    Find new contacts
-                  </label>
-                  <div className="import-search-row">
-                    <input
-                      id="webhookSearch"
-                      className="text-input"
-                      value={webhookSearchTerm}
-                      onChange={(event) => {
-                        setWebhookSearchTerm(event.target.value);
-                        setWebhookSearchError("");
-                      }}
-                      placeholder="e.g., Meta SWE"
-                    />
-                    <button
-                      type="submit"
-                      value="search"
-                      className="button secondary"
-                      disabled={disableSubmit}
-                      aria-busy={loadingAction === "search"}
-                    >
-                      {loadingAction === "search" ? <IconLoader /> : null}
-                      {loadingAction === "search" ? "Searching…" : "Search"}
-                    </button>
-                  </div>
-                  <div
-                    className={`validation-text${
-                      webhookSearchError ? " error" : ""
-                    }`}
-                  >
-                    {webhookSearchError || "Enter a title, company, or keyword to search."}
-                  </div>
-                </div>
-              </form>
-
               {shouldShowImportResults ? (
                 <form
                   className="import-results-form"
@@ -3607,7 +3843,7 @@ export default function Rolodex() {
                 >
                   <div className="table-section import-results-section">
                     <div className="table-toolbar import-results-toolbar">
-                      <span className="import-results-title">Search results</span>
+                      <span className="import-results-title">Imported contacts</span>
                       <div className="table-page-size">
                         <label htmlFor="importPageSize">Rows per page</label>
                         <select
@@ -3633,7 +3869,7 @@ export default function Rolodex() {
                     <div className="table-scroll import-table-scroll">
                       <table className="view-table import-table">
                         <caption className="visually-hidden">
-                          Import search results
+                          Imported contacts
                         </caption>
                         <thead>
                           <tr>
@@ -3925,6 +4161,19 @@ export default function Rolodex() {
                 ) : (
                   <>
                     <div className="table-toolbar">
+                      <div className="table-search">
+                        <label htmlFor="emailSearch" className="visually-hidden">
+                          Search contacts
+                        </label>
+                        <input
+                          id="emailSearch"
+                          type="search"
+                          className="table-search-input"
+                          value={emailSearchTerm}
+                          onChange={(event) => setEmailSearchTerm(event.target.value)}
+                          placeholder="Search contacts"
+                        />
+                      </div>
                       <div className="table-page-size">
                         <label htmlFor="emailPageSize">Rows per page</label>
                         <select
@@ -4855,6 +5104,19 @@ export default function Rolodex() {
           {resolvedViewRecords.length > 0 && (
             <div className="table-section">
               <div className="table-toolbar">
+                <div className="table-search">
+                  <label htmlFor="viewSearch" className="visually-hidden">
+                    Search contacts
+                  </label>
+                  <input
+                    id="viewSearch"
+                    type="search"
+                    className="table-search-input"
+                    value={viewSearchTerm}
+                    onChange={(event) => setViewSearchTerm(event.target.value)}
+                    placeholder="Search contacts"
+                  />
+                </div>
                 <div className="table-page-size">
                   <label htmlFor="viewPageSize">Rows per page</label>
                   <select
