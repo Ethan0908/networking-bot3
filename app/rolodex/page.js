@@ -120,6 +120,15 @@ const DEFAULT_TEMPLATE = {
 };
 const DEFAULT_PREVIEW_MESSAGE = "[AI will write this]";
 const DEFAULT_BATCH_SIZE = 10;
+const TABLE_PAGE_SIZES = [5, 10, 25, 50, 100];
+const IMPORT_EDITABLE_FIELDS = new Set([
+  "full_name",
+  "title",
+  "company",
+  "location",
+  "profile_url",
+  "email",
+]);
 
 const BUILT_IN_PLACEHOLDERS = [
   { id: "contact.name", label: "[contact name]", token: "{{contact.name}}" },
@@ -202,6 +211,169 @@ function formatSummary(record) {
     parts.push("Contact loaded.");
   }
   return parts.join(" • ");
+}
+
+function extractImportRecords(payload) {
+  if (!payload) {
+    return [];
+  }
+  if (typeof payload === "string") {
+    return [payload];
+  }
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (typeof payload === "object") {
+    if (Array.isArray(payload.results)) {
+      return payload.results;
+    }
+    if (Array.isArray(payload.contacts)) {
+      return payload.contacts;
+    }
+    if (Array.isArray(payload.data)) {
+      return payload.data;
+    }
+    if (Array.isArray(payload.records)) {
+      return payload.records;
+    }
+    return [payload];
+  }
+  return [];
+}
+
+function normalizeCsvHeader(header, index) {
+  if (header == null) {
+    return `field_${index}`;
+  }
+  const trimmed = String(header).trim();
+  if (!trimmed) {
+    return `field_${index}`;
+  }
+  const normalized = trimmed.toLowerCase();
+  switch (normalized) {
+    case "full name":
+    case "name":
+      return "full_name";
+    case "email address":
+      return "email";
+    case "linkedin":
+    case "linkedin url":
+    case "linkedin profile":
+      return "profile_url";
+    case "profile link":
+      return "profile_url";
+    case "id":
+    case "contact id":
+      return "contact_id";
+    default: {
+      const snake = normalized
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      if (snake === "") {
+        return `field_${index}`;
+      }
+      if (snake === "email_address") {
+        return "email";
+      }
+      if (snake === "profile") {
+        return "profile_url";
+      }
+      return snake;
+    }
+  }
+}
+
+function parseCsvRows(csvText) {
+  if (!csvText || typeof csvText !== "string") {
+    return [];
+  }
+  const rows = [];
+  let current = "";
+  let row = [];
+  let inQuotes = false;
+
+  for (let index = 0; index < csvText.length; index += 1) {
+    const char = csvText[index];
+    if (inQuotes) {
+      if (char === "\"") {
+        if (csvText[index + 1] === "\"") {
+          current += "\"";
+          index += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(current);
+      current = "";
+    } else if (char === "\n") {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+    } else if (char === "\r") {
+      // Ignore carriage returns and rely on newline handling.
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current);
+  rows.push(row);
+  return rows;
+}
+
+function parseCsvRecords(csvText) {
+  const rows = parseCsvRows(csvText);
+  if (rows.length === 0) {
+    return [];
+  }
+  const headerRow = rows.shift();
+  if (!headerRow || headerRow.length === 0) {
+    return [];
+  }
+
+  const seen = new Map();
+  const headers = headerRow.map((cell, index) => {
+    const base = normalizeCsvHeader(cell, index);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    if (count === 0) {
+      return base;
+    }
+    return `${base}_${count + 1}`;
+  });
+
+  const records = [];
+  for (const row of rows) {
+    if (!row || row.length === 0) {
+      continue;
+    }
+    const record = {};
+    let hasValue = false;
+    for (let index = 0; index < headers.length; index += 1) {
+      const key = headers[index] ?? `field_${index}`;
+      const raw = index < row.length ? row[index] : "";
+      const value = raw == null ? "" : String(raw).trim();
+      if (value) {
+        hasValue = true;
+      }
+      if (!(key in record)) {
+        record[key] = value;
+      }
+    }
+    if (hasValue) {
+      records.push(record);
+    }
+  }
+  return records;
 }
 
 function formatRelativeTime(value) {
@@ -597,6 +769,30 @@ export default function Rolodex() {
   const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
   const [emailRecipients, setEmailRecipients] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [csvFileContent, setCsvFileContent] = useState("");
+  const [csvFileName, setCsvFileName] = useState("");
+  const [csvFileInputKey, setCsvFileInputKey] = useState(0);
+  const [csvImportError, setCsvImportError] = useState("");
+  const [importResults, setImportResults] = useState([]);
+  const [importSelection, setImportSelection] = useState([]);
+  const [importSubmitStatus, setImportSubmitStatus] = useState("idle");
+  const [importSort, setImportSort] = useState({
+    key: "local_id",
+    direction: "asc",
+  });
+  const [importPageSize, setImportPageSize] = useState(5);
+  const [importPageIndex, setImportPageIndex] = useState(0);
+  const [viewPageSize, setViewPageSize] = useState(5);
+  const [viewPageIndex, setViewPageIndex] = useState(0);
+  const [viewSort, setViewSort] = useState({
+    key: "local_id",
+    direction: "asc",
+  });
+  const [emailPageSize, setEmailPageSize] = useState(5);
+  const [emailPageIndex, setEmailPageIndex] = useState(0);
+  const [emailSort, setEmailSort] = useState({ key: "local_id", direction: "asc" });
+  const [viewSearchTerm, setViewSearchTerm] = useState("");
+  const [emailSearchTerm, setEmailSearchTerm] = useState("");
   const [toChips, setToChips] = useState(() => [...DEFAULT_TEMPLATE.to]);
   const [toInputValue, setToInputValue] = useState("");
   const [customPlaceholders, setCustomPlaceholders] = useState([]);
@@ -621,8 +817,23 @@ export default function Rolodex() {
   );
   const validationTimers = useRef({});
   const selectAllRef = useRef(null);
+  const importSelectAllRef = useRef(null);
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
+  const importSubmitResetRef = useRef(null);
+
+  const clearImportSubmitReset = useCallback(() => {
+    if (importSubmitResetRef.current) {
+      clearTimeout(importSubmitResetRef.current);
+      importSubmitResetRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearImportSubmitReset();
+    };
+  }, [clearImportSubmitReset]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -903,16 +1114,16 @@ export default function Rolodex() {
         return;
       }
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-        pushToast("info", "Contact ID copied.");
+        pushToast("info", "Local ID copied.");
         return;
       }
       navigator.clipboard
         .writeText(trimmed)
         .then(() => {
-          pushToast("info", "Contact ID copied.");
+          pushToast("info", "Local ID copied.");
         })
         .catch(() => {
-          pushToast("error", "Unable to copy contact ID.");
+          pushToast("error", "Unable to copy local ID.");
         });
     },
     [pushToast],
@@ -1087,6 +1298,103 @@ export default function Rolodex() {
     return idCandidate != null ? String(idCandidate) : "";
   }, []);
 
+  const normalizeImportPayload = useCallback(
+    (payload) => {
+      const rawRecords = extractImportRecords(payload);
+      const expanded = [];
+
+      for (const item of rawRecords) {
+        if (!item) {
+          continue;
+        }
+        if (typeof item === "string") {
+          expanded.push(...parseCsvRecords(item));
+          continue;
+        }
+        if (typeof item === "object") {
+          if (typeof item.data === "string") {
+            const parsed = parseCsvRecords(item.data);
+            if (parsed.length > 0) {
+              expanded.push(...parsed);
+              continue;
+            }
+          } else if (Array.isArray(item.data)) {
+            let handled = false;
+            for (const nested of item.data) {
+              if (!nested) {
+                continue;
+              }
+              if (typeof nested === "string") {
+                expanded.push(...parseCsvRecords(nested));
+                handled = true;
+              } else if (typeof nested === "object") {
+                expanded.push(nested);
+                handled = true;
+              }
+            }
+            if (handled) {
+              continue;
+            }
+          }
+          expanded.push(item);
+        }
+      }
+
+      const timestamp = Date.now().toString(36);
+      return expanded
+        .filter((record) => record && typeof record === "object")
+        .map((record, index) => {
+          const baseRecord = { ...record };
+          const contactIdValue = resolveContactId(baseRecord);
+          const baseId =
+            contactIdValue ||
+            baseRecord.email ||
+            baseRecord.profile_url ||
+            baseRecord.profileUrl ||
+            baseRecord.full_name ||
+            baseRecord.fullName ||
+            `row-${index}`;
+          const rowId = `import-${baseId}-${timestamp}-${index}`;
+          const raw =
+            baseRecord.raw && typeof baseRecord.raw === "object"
+              ? { ...baseRecord.raw }
+              : { ...baseRecord };
+          return {
+            ...baseRecord,
+            __rowId: rowId,
+            contact_id:
+              contactIdValue ||
+              baseRecord.contact_id ||
+              baseRecord.contactId ||
+              "",
+            local_id:
+              baseRecord.local_id ??
+              baseRecord.localId ??
+              contactIdValue ??
+              baseRecord.contact_id ??
+              baseRecord.contactId ??
+              "",
+            full_name:
+              baseRecord.full_name ??
+              baseRecord.fullName ??
+              baseRecord.name ??
+              "",
+            title: baseRecord.title ?? "",
+            company: baseRecord.company ?? "",
+            location: baseRecord.location ?? "",
+            profile_url:
+              baseRecord.profile_url ??
+              baseRecord.profileUrl ??
+              baseRecord.linkedin ??
+              "",
+            email: baseRecord.email ?? "",
+            raw,
+          };
+        });
+    },
+    [resolveContactId],
+  );
+
   const handleLoadEmailContacts = useCallback(async () => {
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
@@ -1131,6 +1439,7 @@ export default function Rolodex() {
       setPreviewContent(null);
       setEmailRecipients([]);
       setIsSampleEmailContacts(false);
+      setEmailSearchTerm("");
       if (normalized.length === 0) {
         pushToast("info", "No contacts found for this username.");
       } else {
@@ -1143,7 +1452,91 @@ export default function Rolodex() {
     } finally {
       setLoadingContacts(false);
     }
-  }, [pushToast, resolveContactId, username]);
+    setEmailPageIndex(0);
+  }, [pushToast, resolveContactId, setEmailSearchTerm, username]);
+
+  const handleCsvFileChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0];
+      setCsvImportError("");
+      if (!file) {
+        setCsvFileContent("");
+        setCsvFileName("");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === "string") {
+          setCsvFileContent(result);
+          setCsvFileName(file.name ?? "");
+        } else {
+          setCsvImportError("Unable to read CSV file.");
+          setCsvFileContent("");
+          setCsvFileName("");
+          pushToast("error", "Unable to read CSV file.");
+        }
+      };
+      reader.onerror = () => {
+        setCsvImportError("Unable to read CSV file.");
+        setCsvFileContent("");
+        setCsvFileName("");
+        pushToast("error", "Unable to read CSV file.");
+      };
+      reader.readAsText(file);
+    },
+    [pushToast],
+  );
+
+  const handleImportSort = useCallback(
+    (columnId) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      setImportSort((prev) => {
+        if (prev.key === columnId) {
+          return {
+            key: columnId,
+            direction: prev.direction === "asc" ? "desc" : "asc",
+          };
+        }
+        return {
+          key: columnId,
+          direction: "asc",
+        };
+      });
+    },
+    [clearImportSubmitReset],
+  );
+
+  const handleViewSort = useCallback((columnId) => {
+    setViewSort((prev) => {
+      if (prev.key === columnId) {
+        return {
+          key: columnId,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key: columnId,
+        direction: "asc",
+      };
+    });
+  }, []);
+
+  const handleEmailSort = useCallback((columnId) => {
+    setEmailSort((prev) => {
+      if (prev.key === columnId) {
+        return {
+          key: columnId,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return {
+        key: columnId,
+        direction: "asc",
+      };
+    });
+  }, []);
 
   const handleToggleRecipient = useCallback((id) => {
     setEmailRecipients((prev) => {
@@ -1153,6 +1546,97 @@ export default function Rolodex() {
         : [...prev, normalizedId];
     });
   }, []);
+
+  const handleToggleImportRow = useCallback(
+    (rowId) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      const normalizedId = String(rowId);
+      setImportSelection((prev) =>
+        prev.includes(normalizedId)
+          ? prev.filter((id) => id !== normalizedId)
+          : [...prev, normalizedId],
+      );
+    },
+    [clearImportSubmitReset],
+  );
+
+  const handleToggleImportSelectAll = useCallback(
+    (ids) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      const targetIds = Array.isArray(ids) && ids.length > 0
+        ? ids.map(String)
+        : importResults.map((record) => String(record.__rowId));
+      if (targetIds.length === 0) {
+        return;
+      }
+      setImportSelection((prev) => {
+        const missing = targetIds.filter((id) => !prev.includes(id));
+        if (missing.length === 0) {
+          return prev.filter((id) => !targetIds.includes(id));
+        }
+        const next = new Set(prev);
+        for (const id of targetIds) {
+          next.add(id);
+        }
+        return Array.from(next);
+      });
+    },
+    [clearImportSubmitReset, importResults],
+  );
+
+  const handleImportRowClick = useCallback(
+    (event, rowId) => {
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target.closest("input") ||
+          event.target.closest("button") ||
+          event.target.closest("a"))
+      ) {
+        return;
+      }
+      handleToggleImportRow(rowId);
+    },
+    [handleToggleImportRow],
+  );
+
+  const handleImportFieldChange = useCallback(
+    (rowId, field, value) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      setImportResults((prev) =>
+        prev.map((record) => {
+          if (String(record.__rowId) !== String(rowId)) {
+            return record;
+          }
+          const normalizedField = field;
+          const nextRaw = { ...(record.raw ?? {}) };
+          nextRaw[normalizedField] = value;
+          if (normalizedField === "full_name") {
+            nextRaw.fullName = value;
+            nextRaw.name = value;
+          } else if (normalizedField === "profile_url") {
+            nextRaw.profileUrl = value;
+          } else if (normalizedField === "email") {
+            nextRaw.email = value;
+          } else if (normalizedField === "title") {
+            nextRaw.title = value;
+          } else if (normalizedField === "company") {
+            nextRaw.company = value;
+          } else if (normalizedField === "location") {
+            nextRaw.location = value;
+          }
+          return {
+            ...record,
+            [normalizedField]: value,
+            raw: nextRaw,
+          };
+        }),
+      );
+    },
+    [clearImportSubmitReset],
+  );
 
   const handleRecipientRowClick = useCallback(
     (event, id) => {
@@ -1166,39 +1650,6 @@ export default function Rolodex() {
     },
     [handleToggleRecipient],
   );
-
-  const allRecipientIds = useMemo(
-    () =>
-      emailContacts
-        .map((contact) => contact.__contactId || resolveContactId(contact))
-        .filter(Boolean)
-        .map(String),
-    [emailContacts, resolveContactId],
-  );
-
-  const allRecipientsSelected = useMemo(() => {
-    if (allRecipientIds.length === 0) {
-      return false;
-    }
-    return allRecipientIds.every((id) => emailRecipients.includes(id));
-  }, [allRecipientIds, emailRecipients]);
-
-  useEffect(() => {
-    if (!selectAllRef.current) {
-      return;
-    }
-    selectAllRef.current.indeterminate =
-      emailRecipients.length > 0 && !allRecipientsSelected;
-  }, [allRecipientsSelected, emailRecipients]);
-
-  const handleToggleSelectAll = useCallback(() => {
-    if (allRecipientIds.length === 0) {
-      return;
-    }
-    setEmailRecipients((prev) =>
-      allRecipientsSelected ? [] : allRecipientIds,
-    );
-  }, [allRecipientIds, allRecipientsSelected]);
 
   const handleSaveTemplate = useCallback(() => {
     if (typeof window === "undefined") {
@@ -1302,7 +1753,461 @@ export default function Rolodex() {
     [emailBody],
   );
 
+  const computeEngagementStatus = useCallback((record) => {
+    const explicitLabel =
+      record?.engagement_label ??
+      record?.engagementLabel ??
+      record?.engagement_text ??
+      record?.engagementText ??
+      record?.engagement ??
+      null;
+    const candidate =
+      record?.last_contacted ??
+      record?.last_messaged ??
+      record?.lastMessaged ??
+      record?.last_contacted_at ??
+      null;
+    if (!candidate) {
+      if (explicitLabel) {
+        return { color: "gray", label: explicitLabel };
+      }
+      return { color: "gray", label: "No recent messages" };
+    }
+    const date = new Date(candidate);
+    if (Number.isNaN(date.getTime())) {
+      if (explicitLabel) {
+        return { color: "gray", label: explicitLabel };
+      }
+      return { color: "gray", label: "No recent messages" };
+    }
+    const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    if (diffDays <= 31) {
+      return { color: "green", label: "Last messaged within a month" };
+    }
+    if (diffDays <= 62) {
+      return { color: "yellow", label: "Last messaged within two months" };
+    }
+    return { color: "red", label: "Last messaged three+ months ago" };
+  }, []);
+
   const subjectCharCount = useMemo(() => subject.length, [subject]);
+
+  const emailFilteredContacts = useMemo(() => {
+    if (!Array.isArray(emailContacts) || emailContacts.length === 0) {
+      return [];
+    }
+    const query = emailSearchTerm.trim().toLowerCase();
+    if (!query) {
+      return emailContacts;
+    }
+    return emailContacts.filter((contact) => {
+      const values = [
+        contact.local_id ?? contact.localId ?? null,
+        contact.contact_id ?? contact.contactId ?? null,
+        contact.__contactId || resolveContactId(contact),
+        resolveContactName(contact),
+        contact.title,
+        contact.company,
+        contact.location,
+        contact.profile_url ?? contact.profileUrl,
+        resolveContactEmail(contact),
+        contact.last_contacted ??
+          contact.last_messaged ??
+          contact.lastMessaged ??
+          contact.last_contacted_at ??
+          "",
+      ];
+      const engagement = computeEngagementStatus(contact);
+      if (engagement?.label) {
+        values.push(engagement.label);
+      }
+      return values.some(
+        (value) =>
+          value && String(value).toLowerCase().includes(query),
+      );
+    });
+  }, [
+    computeEngagementStatus,
+    emailContacts,
+    emailSearchTerm,
+    resolveContactEmail,
+    resolveContactId,
+    resolveContactName,
+  ]);
+
+  const emailTableState = useMemo(() => {
+    if (!Array.isArray(emailFilteredContacts) || emailFilteredContacts.length === 0) {
+      return {
+        visibleRecords: [],
+        totalRecords: 0,
+        totalPages: 0,
+        currentPageIndex: 0,
+      };
+    }
+    const filtered = emailFilteredContacts;
+
+    const getSortValue = (record) => {
+      switch (emailSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
+        case "full_name":
+          return resolveContactName(record);
+        case "title":
+          return record.title ?? "";
+        case "company":
+          return record.company ?? "";
+        case "location":
+          return record.location ?? "";
+        case "profile_url":
+          return record.profile_url ?? record.profileUrl ?? "";
+        case "email":
+          return resolveContactEmail(record);
+        case "engagement": {
+          const candidate =
+            record.last_contacted ??
+            record.last_messaged ??
+            record.lastMessaged ??
+            record.last_contacted_at ??
+            null;
+          const parsed = candidate ? Date.parse(candidate) : Number.NaN;
+          if (!Number.isNaN(parsed)) {
+            return parsed;
+          }
+          const status = computeEngagementStatus(record);
+          return status?.label ?? "";
+        }
+        default: {
+          return resolveContactName(record);
+        }
+      }
+    };
+
+    const sorted = filtered.slice().sort((a, b) => {
+      const valueA = getSortValue(a);
+      const valueB = getSortValue(b);
+      const direction = emailSort.direction === "asc" ? 1 : -1;
+      if (typeof valueA === "number" && typeof valueB === "number") {
+        if (valueA === valueB) {
+          return 0;
+        }
+        return valueA < valueB ? -direction : direction;
+      }
+      const stringA = String(valueA ?? "").toLowerCase();
+      const stringB = String(valueB ?? "").toLowerCase();
+      if (stringA === stringB) {
+        return 0;
+      }
+      return stringA < stringB ? -direction : direction;
+    });
+
+    const pageSize = TABLE_PAGE_SIZES.includes(emailPageSize)
+      ? emailPageSize
+      : TABLE_PAGE_SIZES[0];
+    const totalRecords = sorted.length;
+    const totalPages =
+      totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+    const safePageIndex =
+      totalPages === 0
+        ? 0
+        : Math.min(Math.max(emailPageIndex, 0), totalPages - 1);
+    const start = safePageIndex * pageSize;
+    const visibleRecords = sorted.slice(start, start + pageSize);
+
+    return {
+      visibleRecords,
+      totalRecords,
+      totalPages,
+      currentPageIndex: safePageIndex,
+      pageSize,
+    };
+  }, [
+    computeEngagementStatus,
+    emailFilteredContacts,
+    emailPageIndex,
+    emailPageSize,
+    emailSort,
+    resolveContactEmail,
+    resolveContactName,
+  ]);
+
+  const importTableState = useMemo(() => {
+    if (!Array.isArray(importResults) || importResults.length === 0) {
+      return {
+        visibleRecords: [],
+        totalRecords: 0,
+        totalPages: 0,
+        currentPageIndex: 0,
+        pageSize: TABLE_PAGE_SIZES[0],
+      };
+    }
+
+    const getSortValue = (record) => {
+      switch (importSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
+        case "full_name":
+          return record.full_name ?? record.fullName ?? record.name ?? "";
+        case "title":
+          return record.title ?? "";
+        case "company":
+          return record.company ?? "";
+        case "location":
+          return record.location ?? "";
+        case "profile_url":
+          return record.profile_url ?? record.profileUrl ?? "";
+        case "email":
+          return record.email ?? "";
+        default:
+          return record.full_name ?? record.fullName ?? record.name ?? "";
+      }
+    };
+
+    const sorted = importResults.slice().sort((a, b) => {
+      const valueA = getSortValue(a);
+      const valueB = getSortValue(b);
+      const direction = importSort.direction === "asc" ? 1 : -1;
+      if (typeof valueA === "number" && typeof valueB === "number") {
+        if (valueA === valueB) {
+          return 0;
+        }
+        return valueA < valueB ? -direction : direction;
+      }
+      const stringA = String(valueA ?? "").toLowerCase();
+      const stringB = String(valueB ?? "").toLowerCase();
+      if (stringA === stringB) {
+        return 0;
+      }
+      return stringA < stringB ? -direction : direction;
+    });
+
+    const pageSize = TABLE_PAGE_SIZES.includes(importPageSize)
+      ? importPageSize
+      : TABLE_PAGE_SIZES[0];
+    const totalRecords = sorted.length;
+    const totalPages =
+      totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+    const safePageIndex =
+      totalPages === 0
+        ? 0
+        : Math.min(Math.max(importPageIndex, 0), totalPages - 1);
+    const start = safePageIndex * pageSize;
+    const visibleRecords = sorted.slice(start, start + pageSize);
+
+    return {
+      visibleRecords,
+      totalRecords,
+      totalPages,
+      currentPageIndex: safePageIndex,
+      pageSize,
+    };
+  }, [importPageIndex, importPageSize, importResults, importSort]);
+
+  const {
+    visibleRecords: emailVisibleContacts,
+    totalRecords: emailTotalRecords,
+    totalPages: emailTotalPages,
+    currentPageIndex: currentEmailPageIndex,
+    pageSize: emailResolvedPageSize,
+  } = emailTableState;
+
+  const {
+    visibleRecords: importVisibleRecords,
+    totalRecords: importTotalRecords,
+    totalPages: importTotalPages,
+    currentPageIndex: currentImportPageIndex,
+    pageSize: importResolvedPageSize,
+  } = importTableState;
+
+  const emailRecordCount = emailFilteredContacts.length;
+  const importRecordCount = importResults.length;
+
+  useEffect(() => {
+    if (currentEmailPageIndex !== emailPageIndex) {
+      setEmailPageIndex(currentEmailPageIndex);
+    }
+  }, [currentEmailPageIndex, emailPageIndex]);
+
+  useEffect(() => {
+    setEmailPageIndex(0);
+  }, [emailPageSize, emailRecordCount, emailSearchTerm]);
+
+  useEffect(() => {
+    if (currentImportPageIndex !== importPageIndex) {
+      setImportPageIndex(currentImportPageIndex);
+    }
+  }, [currentImportPageIndex, importPageIndex]);
+
+  useEffect(() => {
+    setImportPageIndex(0);
+  }, [importPageSize, importRecordCount]);
+
+  useEffect(() => {
+    const allowed = new Set(
+      importResults
+        .map((record) => record?.__rowId)
+        .filter((id) => id != null)
+        .map((id) => String(id)),
+    );
+    setImportSelection((prev) => {
+      const filtered = prev.filter((id) => allowed.has(String(id)));
+      if (filtered.length === prev.length) {
+        return prev;
+      }
+      return filtered;
+    });
+  }, [importResults]);
+
+  const emailPageNumbers = useMemo(() => {
+    if (emailTotalPages === 0) {
+      return [];
+    }
+    const count = Math.min(emailTotalPages, 100);
+    return Array.from({ length: count }, (_, index) => index + 1);
+  }, [emailTotalPages]);
+
+  const emailRangeStart =
+    emailTotalRecords === 0 || emailVisibleContacts.length === 0
+      ? 0
+      : currentEmailPageIndex * emailResolvedPageSize + 1;
+  const emailRangeEnd =
+    emailTotalRecords === 0 || emailVisibleContacts.length === 0
+      ? 0
+      : currentEmailPageIndex * emailResolvedPageSize + emailVisibleContacts.length;
+
+  const importPageNumbers = useMemo(() => {
+    if (importTotalPages === 0) {
+      return [];
+    }
+    const count = Math.min(importTotalPages, 100);
+    return Array.from({ length: count }, (_, index) => index + 1);
+  }, [importTotalPages]);
+
+  const importRangeStart =
+    importTotalRecords === 0 || importVisibleRecords.length === 0
+      ? 0
+      : currentImportPageIndex * importResolvedPageSize + 1;
+
+  const importRangeEnd =
+    importTotalRecords === 0 || importVisibleRecords.length === 0
+      ? 0
+      : currentImportPageIndex * importResolvedPageSize + importVisibleRecords.length;
+
+  const allRecipientIds = useMemo(
+    () =>
+      emailContacts
+        .map((contact) => contact.__contactId || resolveContactId(contact))
+        .filter(Boolean)
+        .map(String),
+    [emailContacts, resolveContactId],
+  );
+
+  const displayedRecipientIds = useMemo(
+    () =>
+      emailVisibleContacts
+        .map((contact) => contact.__contactId || resolveContactId(contact))
+        .filter(Boolean)
+        .map(String),
+    [emailVisibleContacts, resolveContactId],
+  );
+
+  const displayedRecipientsSelected = useMemo(
+    () =>
+      displayedRecipientIds.length > 0 &&
+      displayedRecipientIds.every((id) => emailRecipients.includes(id)),
+    [displayedRecipientIds, emailRecipients],
+  );
+
+  const displayedRecipientsPartiallySelected = useMemo(
+    () =>
+      displayedRecipientIds.some((id) => emailRecipients.includes(id)) &&
+      !displayedRecipientsSelected,
+    [displayedRecipientIds, displayedRecipientsSelected, emailRecipients],
+  );
+
+  useEffect(() => {
+    if (!selectAllRef.current) {
+      return;
+    }
+    selectAllRef.current.indeterminate = displayedRecipientsPartiallySelected;
+  }, [displayedRecipientsPartiallySelected]);
+
+  const importVisibleIds = useMemo(
+    () =>
+      importVisibleRecords
+        .map((record) => record?.__rowId)
+        .filter((id) => id != null)
+        .map((id) => String(id)),
+    [importVisibleRecords],
+  );
+
+  const importSelectionSet = useMemo(
+    () => new Set(importSelection.map((id) => String(id))),
+    [importSelection],
+  );
+
+  const importDisplayedSelected = useMemo(
+    () =>
+      importVisibleIds.length > 0 &&
+      importVisibleIds.every((id) => importSelectionSet.has(id)),
+    [importSelectionSet, importVisibleIds],
+  );
+
+  const importDisplayedPartiallySelected = useMemo(
+    () =>
+      importVisibleIds.some((id) => importSelectionSet.has(id)) &&
+      !importDisplayedSelected,
+    [importDisplayedSelected, importSelectionSet, importVisibleIds],
+  );
+
+  useEffect(() => {
+    if (!importSelectAllRef.current) {
+      return;
+    }
+    importSelectAllRef.current.indeterminate = importDisplayedPartiallySelected;
+  }, [importDisplayedPartiallySelected]);
+
+  const importSelectionCount = importSelection.length;
+  const importSelectionSummary =
+    importSelectionCount > 0
+      ? `${importSelectionCount} contact${importSelectionCount === 1 ? "" : "s"} selected.`
+      : "No contacts selected.";
+  const shouldShowImportResults =
+    importResults.length > 0 || lastAction === "import";
+
+  const handleToggleSelectAll = useCallback(
+    (ids) => {
+      const targetIds = Array.isArray(ids) && ids.length > 0 ? ids : allRecipientIds;
+      if (targetIds.length === 0) {
+        return;
+      }
+      setEmailRecipients((prev) => {
+        const missing = targetIds.filter((id) => !prev.includes(id));
+        if (missing.length === 0) {
+          return prev.filter((id) => !targetIds.includes(id));
+        }
+        const next = new Set(prev);
+        for (const id of targetIds) {
+          next.add(id);
+        }
+        return Array.from(next);
+      });
+    },
+    [allRecipientIds],
+  );
 
   const contactMap = useMemo(() => {
     const map = new Map();
@@ -1314,6 +2219,17 @@ export default function Rolodex() {
     }
     return map;
   }, [emailContacts, resolveContactId]);
+
+  useEffect(() => {
+    if (emailRecipients.length === 0) {
+      return;
+    }
+    setEmailRecipients((prev) =>
+      prev.filter((id) =>
+        contactMap.has(id) && resolveContactEmail(contactMap.get(id)),
+      ),
+    );
+  }, [contactMap, emailRecipients.length, resolveContactEmail]);
 
   const selectedContacts = useMemo(() => {
     if (!emailRecipients || emailRecipients.length === 0) {
@@ -2121,9 +3037,12 @@ export default function Rolodex() {
       }
       setLastAction(action);
       setLoadingAction(action);
+      clearImportSubmitReset();
+      setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
       setUsernameHighlight(false);
       setContactHighlight(false);
+      setCsvImportError("");
 
       const trimmedUsernameValue = username.trim();
       const trimmedContactId = contactId.trim();
@@ -2155,7 +3074,7 @@ export default function Rolodex() {
 
       if (action === "update") {
         if (!trimmedContactId) {
-          const message = "Contact ID is required to update.";
+          const message = "Local ID is required to update.";
           setErrorMessage(message);
           pushToast("error", message);
           setContactHighlight(true);
@@ -2186,6 +3105,51 @@ export default function Rolodex() {
         Object.assign(body, contactDetails);
       }
 
+      if (action === "import") {
+        if (!csvFileContent) {
+          const message = "Please upload a CSV file before importing.";
+          setCsvImportError(message);
+          pushToast("error", message);
+          setLoadingAction(null);
+          return;
+        }
+        body.csv_content = csvFileContent;
+        if (csvFileName) {
+          body.csv_filename = csvFileName;
+        }
+      }
+
+      if (action === "import1") {
+        if (importSelection.length === 0) {
+          const message = "Select at least one contact to import.";
+          setErrorMessage(message);
+          pushToast("error", message);
+          setImportSubmitStatus("idle");
+          setLoadingAction(null);
+          return;
+        }
+        const selectedIds = new Set(importSelection.map(String));
+        const selectedRecords = importResults.filter((record) =>
+          selectedIds.has(String(record.__rowId)),
+        );
+        if (selectedRecords.length === 0) {
+          const message = "Selected contacts are unavailable.";
+          setErrorMessage(message);
+          pushToast("error", message);
+          setImportSelection([]);
+          setImportSubmitStatus("idle");
+          setLoadingAction(null);
+          return;
+        }
+        body.contacts = selectedRecords.map((record) => {
+          const { __rowId, raw, ...rest } = record;
+          if (raw && typeof raw === "object") {
+            return { ...raw, ...rest };
+          }
+          return rest;
+        });
+      }
+
       try {
         const r = await fetch("/api/rolodex", {
           method: "POST",
@@ -2211,6 +3175,14 @@ export default function Rolodex() {
           throw new Error(messageText);
         }
         setResponse(data ?? { success: true });
+        if (action === "import") {
+          const normalized = normalizeImportPayload(data);
+          setImportResults(normalized);
+          setImportSelection([]);
+          setImportPageIndex(0);
+          setImportSubmitStatus("idle");
+          clearImportSubmitReset();
+        }
         if (action === "create") {
           pushToast("success", "Contact created.");
         } else if (action === "update") {
@@ -2223,6 +3195,20 @@ export default function Rolodex() {
             setInlineSummary(formatSummary(record));
             pushToast("success", "Contact loaded.");
           }
+        } else if (action === "import") {
+          pushToast("success", "Import requested.");
+          setCsvFileContent("");
+          setCsvFileName("");
+          setCsvFileInputKey((prev) => prev + 1);
+        } else if (action === "import1") {
+          pushToast("success", "Import requested.");
+          setImportSelection([]);
+          setImportSubmitStatus("saved");
+          clearImportSubmitReset();
+          importSubmitResetRef.current = window.setTimeout(() => {
+            setImportSubmitStatus("idle");
+            importSubmitResetRef.current = null;
+          }, 2500);
         }
       } catch (error) {
         const messageText =
@@ -2230,15 +3216,25 @@ export default function Rolodex() {
         setErrorMessage(messageText);
         pushToast("error", messageText);
         setResponse(null);
+        if (action === "import1") {
+          setImportSubmitStatus("idle");
+          clearImportSubmitReset();
+        }
       } finally {
         setLoadingAction(null);
       }
     },
     [
+      csvFileContent,
+      csvFileName,
+      clearImportSubmitReset,
       contactId,
+      importResults,
+      importSelection,
       email,
       fullName,
       location,
+      normalizeImportPayload,
       profileUrl,
       pushToast,
       resetResponses,
@@ -2382,11 +3378,52 @@ export default function Rolodex() {
 
   const tabs = [
     { id: "create", label: "Create" },
+    { id: "import", label: "Import" },
     { id: "view", label: "View" },
     { id: "update", label: "Update" },
     { id: "email", label: "Email" },
     { id: "cover", label: "Cover letter" },
   ];
+
+  const viewColumns = useMemo(
+    () => [
+      { id: "local_id", label: "Local ID" },
+      { id: "full_name", label: "Full Name" },
+      { id: "title", label: "Title" },
+      { id: "company", label: "Company" },
+      { id: "location", label: "Location" },
+      { id: "profile_url", label: "Profile URL" },
+      { id: "email", label: "Email" },
+      { id: "engagement", label: "Engagement" },
+    ],
+    [],
+  );
+
+  const emailColumns = useMemo(
+    () => [
+      { id: "local_id", label: "Local ID" },
+      { id: "full_name", label: "Full Name" },
+      { id: "title", label: "Title" },
+      { id: "company", label: "Company" },
+      { id: "location", label: "Location" },
+      { id: "profile_url", label: "Profile URL" },
+      { id: "email", label: "Email" },
+      { id: "engagement", label: "Engagement" },
+    ],
+    [],
+  );
+
+  const importColumns = useMemo(
+    () => [
+      { id: "full_name", label: "Full Name" },
+      { id: "title", label: "Title" },
+      { id: "company", label: "Company" },
+      { id: "location", label: "Location" },
+      { id: "profile_url", label: "Profile URL" },
+      { id: "email", label: "Email" },
+    ],
+    [],
+  );
 
   const viewRecords = useMemo(() => {
     if (lastAction !== "view" || !response) {
@@ -2395,12 +3432,6 @@ export default function Rolodex() {
     const records = Array.isArray(response) ? response : [response];
     return records.filter((record) => record && typeof record === "object");
   }, [lastAction, response]);
-
-  const showJsonResponse =
-    lastAction &&
-    lastAction === activePage &&
-    lastAction !== "view" &&
-    response;
 
   const sampleViewRecord = useMemo(() => ({ ...SAMPLE_CONTACT_RECORD }), []);
 
@@ -2427,6 +3458,199 @@ export default function Rolodex() {
     return /^https?:\/\//i.test(value) ? value : `https://${value}`;
   };
 
+  const viewFilteredRecords = useMemo(() => {
+    if (!Array.isArray(resolvedViewRecords) || resolvedViewRecords.length === 0) {
+      return [];
+    }
+    const query = viewSearchTerm.trim().toLowerCase();
+    if (!query) {
+      return resolvedViewRecords;
+    }
+    return resolvedViewRecords.filter((record) => {
+      const values = [
+        record.local_id ?? record.localId ?? null,
+        record.contact_id ?? record.contactId ?? null,
+        resolveContactId(record),
+        resolveContactName(record),
+        record.full_name ?? record.fullName ?? record.name,
+        record.title,
+        record.company,
+        record.location,
+        record.profile_url ?? record.profileUrl,
+        record.email,
+        record.engagement_label ?? record.engagementLabel ?? record.status,
+        record.last_contacted ??
+          record.last_messaged ??
+          record.lastMessaged ??
+          record.last_contacted_at ??
+          "",
+      ];
+      const engagement = computeEngagementStatus(record);
+      if (engagement?.label) {
+        values.push(engagement.label);
+      }
+      return values.some(
+        (value) =>
+          value && String(value).toLowerCase().includes(query),
+      );
+    });
+  }, [
+    computeEngagementStatus,
+    resolveContactId,
+    resolveContactName,
+    resolvedViewRecords,
+    viewSearchTerm,
+  ]);
+
+  const viewTableState = useMemo(() => {
+    if (!Array.isArray(viewFilteredRecords) || viewFilteredRecords.length === 0) {
+      return {
+        visibleRecords: [],
+        totalRecords: 0,
+        totalPages: 0,
+        currentPageIndex: 0,
+      };
+    }
+    const filtered = viewFilteredRecords;
+
+    const getSortValue = (record) => {
+      switch (viewSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
+        case "full_name":
+          return (
+            record.full_name ??
+            record.fullName ??
+            record.name ??
+            ""
+          );
+        case "title":
+          return record.title ?? "";
+        case "company":
+          return record.company ?? "";
+        case "location":
+          return record.location ?? "";
+        case "profile_url":
+          return record.profile_url ?? record.profileUrl ?? "";
+        case "email":
+          return record.email ?? "";
+        case "engagement": {
+          const candidate =
+            record.last_contacted ??
+            record.last_messaged ??
+            record.lastMessaged ??
+            record.last_contacted_at ??
+            null;
+          const parsed = candidate ? Date.parse(candidate) : Number.NaN;
+          if (!Number.isNaN(parsed)) {
+            return parsed;
+          }
+          const status = computeEngagementStatus(record);
+          return status?.label ?? "";
+        }
+        default: {
+          return (
+            record.full_name ??
+            record.fullName ??
+            record.name ??
+            resolveContactName(record) ??
+            ""
+          );
+        }
+      }
+    };
+
+    const sorted = filtered.slice().sort((a, b) => {
+      const valueA = getSortValue(a);
+      const valueB = getSortValue(b);
+      const direction = viewSort.direction === "asc" ? 1 : -1;
+      if (typeof valueA === "number" && typeof valueB === "number") {
+        if (valueA === valueB) {
+          return 0;
+        }
+        return valueA < valueB ? -direction : direction;
+      }
+      const stringA = String(valueA ?? "").toLowerCase();
+      const stringB = String(valueB ?? "").toLowerCase();
+      if (stringA === stringB) {
+        return 0;
+      }
+      return stringA < stringB ? -direction : direction;
+    });
+
+    const pageSize = TABLE_PAGE_SIZES.includes(viewPageSize)
+      ? viewPageSize
+      : TABLE_PAGE_SIZES[0];
+    const totalRecords = sorted.length;
+    const totalPages =
+      totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+    const safePageIndex =
+      totalPages === 0
+        ? 0
+        : Math.min(Math.max(viewPageIndex, 0), totalPages - 1);
+    const start = safePageIndex * pageSize;
+    const visibleRecords = sorted.slice(start, start + pageSize);
+
+    return {
+      visibleRecords,
+      totalRecords,
+      totalPages,
+      currentPageIndex: safePageIndex,
+      pageSize,
+    };
+  }, [
+    computeEngagementStatus,
+    resolveContactId,
+    viewFilteredRecords,
+    viewPageIndex,
+    viewPageSize,
+    viewSort,
+  ]);
+
+  const {
+    visibleRecords: viewVisibleRecords,
+    totalRecords: viewTotalRecords,
+    totalPages: viewTotalPages,
+    currentPageIndex: currentViewPageIndex,
+    pageSize: viewResolvedPageSize,
+  } = viewTableState;
+
+  const viewRecordCount = viewFilteredRecords.length;
+
+  useEffect(() => {
+    if (currentViewPageIndex !== viewPageIndex) {
+      setViewPageIndex(currentViewPageIndex);
+    }
+  }, [currentViewPageIndex, viewPageIndex]);
+
+  useEffect(() => {
+    setViewPageIndex(0);
+  }, [viewPageSize, viewRecordCount, viewSearchTerm]);
+
+  const viewPageNumbers = useMemo(() => {
+    if (viewTotalPages === 0) {
+      return [];
+    }
+    const count = Math.min(viewTotalPages, 100);
+    return Array.from({ length: count }, (_, index) => index + 1);
+  }, [viewTotalPages]);
+
+  const viewRangeStart =
+    viewTotalRecords === 0 || viewVisibleRecords.length === 0
+      ? 0
+      : currentViewPageIndex * viewResolvedPageSize + 1;
+  const viewRangeEnd =
+    viewTotalRecords === 0 || viewVisibleRecords.length === 0
+      ? 0
+      : currentViewPageIndex * viewResolvedPageSize + viewVisibleRecords.length;
+
   const formatTimestamp = useCallback((value) => {
     if (!value) {
       return "—";
@@ -2442,43 +3666,6 @@ export default function Rolodex() {
       hour: "numeric",
       minute: "2-digit",
     });
-  }, []);
-
-  const computeEngagementStatus = useCallback((record) => {
-    const explicitLabel =
-      record?.engagement_label ??
-      record?.engagementLabel ??
-      record?.engagement_text ??
-      record?.engagementText ??
-      record?.engagement ??
-      null;
-    const candidate =
-      record?.last_contacted ??
-      record?.last_messaged ??
-      record?.lastMessaged ??
-      record?.last_contacted_at ??
-      null;
-    if (!candidate) {
-      if (explicitLabel) {
-        return { color: "gray", label: explicitLabel };
-      }
-      return { color: "gray", label: "No recent messages" };
-    }
-    const date = new Date(candidate);
-    if (Number.isNaN(date.getTime())) {
-      if (explicitLabel) {
-        return { color: "gray", label: explicitLabel };
-      }
-      return { color: "gray", label: "No recent messages" };
-    }
-    const diffDays = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
-    if (diffDays <= 31) {
-      return { color: "green", label: "Last messaged within a month" };
-    }
-    if (diffDays <= 62) {
-      return { color: "yellow", label: "Last messaged within two months" };
-    }
-    return { color: "red", label: "Last messaged three+ months ago" };
   }, []);
 
   return (
@@ -2546,14 +3733,14 @@ export default function Rolodex() {
           {showContactIdField && (
             <div className={`field${contactHighlight ? " error" : ""}`}>
               <label className="field-label" htmlFor="contactId">
-                Contact ID
+                Local ID
               </label>
               <input
                 id="contactId"
                 className="text-input"
                 value={contactId}
                 onChange={(event) => setContactId(event.target.value)}
-                placeholder="Contact ID"
+                placeholder="Local ID"
                 autoComplete="off"
               />
               {contactId.trim() && (
@@ -2561,14 +3748,14 @@ export default function Rolodex() {
                   type="button"
                   className="copy-button"
                   onClick={handleCopyContactId}
-                  aria-label="Copy contact ID"
+                  aria-label="Copy local ID"
                 >
                   <IconCopy />
                 </button>
               )}
               <div className={`helper-text${contactHighlight ? " error" : ""}`}>
                 {contactHighlight
-                  ? "Contact ID is required to update."
+                  ? "Local ID is required to update."
                   : "Needed when updating a contact."}
               </div>
             </div>
@@ -2618,6 +3805,315 @@ export default function Rolodex() {
             </div>
           )}
 
+          {activePage === "import" && (
+            <div role="tabpanel" id="import-panel" aria-labelledby="import-tab">
+              <form className="import-form" onSubmit={handleSubmit} noValidate>
+                <div className="import-upload">
+                  <label className="field-label" htmlFor="csvFile">
+                    Import contacts from CSV
+                  </label>
+                  <p className="helper-text">
+                    Upload a CSV file to add multiple contacts at once.
+                  </p>
+                  <div className="import-upload-row">
+                    <label
+                      htmlFor="csvFile"
+                      className="button secondary import-upload-button"
+                    >
+                      Upload file
+                    </label>
+                    <span
+                      className={`import-file-name${csvFileName ? "" : " empty"}`}
+                    >
+                      {csvFileName || "No file selected"}
+                    </span>
+                  </div>
+                  <input
+                    key={csvFileInputKey}
+                    id="csvFile"
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="file-input visually-hidden"
+                    onChange={handleCsvFileChange}
+                    disabled={disableSubmit}
+                  />
+                  {csvImportError ? (
+                    <div className="validation-text error">{csvImportError}</div>
+                  ) : null}
+                </div>
+                <div className="action-row import-submit-row">
+                  <button
+                    type="submit"
+                    value="import"
+                    className="button"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "import"}
+                  >
+                    {loadingAction === "import" ? <IconLoader /> : null}
+                    {loadingAction === "import" ? "Importing…" : "Import CSV"}
+                  </button>
+                </div>
+              </form>
+
+              {shouldShowImportResults ? (
+                <form
+                  className="import-results-form"
+                  onSubmit={handleSubmit}
+                  noValidate
+                >
+                  <div className="table-section import-results-section">
+                    <div className="table-toolbar import-results-toolbar">
+                      <span className="import-results-title">Imported contacts</span>
+                      <div className="table-page-size">
+                        <label htmlFor="importPageSize">Rows per page</label>
+                        <select
+                          id="importPageSize"
+                          value={importResolvedPageSize}
+                          onChange={(event) => {
+                            const next = Number(event.target.value);
+                            setImportPageSize(
+                              Number.isNaN(next) || next <= 0
+                                ? TABLE_PAGE_SIZES[0]
+                                : next,
+                            );
+                          }}
+                        >
+                          {TABLE_PAGE_SIZES.map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="table-scroll import-table-scroll">
+                      <table className="view-table import-table">
+                        <caption className="visually-hidden">
+                          Imported contacts
+                        </caption>
+                        <thead>
+                          <tr>
+                            <th scope="col" className="select-header">
+                              <label className="select-all-control">
+                                <span className="select-all-label">Select all</span>
+                                <input
+                                  ref={importSelectAllRef}
+                                  type="checkbox"
+                                  onChange={() =>
+                                    handleToggleImportSelectAll(importVisibleIds)
+                                  }
+                                  checked={importDisplayedSelected}
+                                  disabled={importVisibleIds.length === 0}
+                                  aria-label="Select all contacts"
+                                />
+                              </label>
+                            </th>
+                            {importColumns.map((column) => {
+                              const isSorted = importSort.key === column.id;
+                              const ariaSort = isSorted
+                                ? importSort.direction === "asc"
+                                  ? "ascending"
+                                  : "descending"
+                                : "none";
+                              return (
+                                <th
+                                  key={column.id}
+                                  scope="col"
+                                  aria-sort={ariaSort}
+                                >
+                                  <button
+                                    type="button"
+                                    className={`sort-button${
+                                      isSorted ? " active" : ""
+                                    }`}
+                                    onClick={() => handleImportSort(column.id)}
+                                  >
+                                    <span>{column.label}</span>
+                                    <span
+                                      className="sort-indicator"
+                                      aria-hidden="true"
+                                    >
+                                      {isSorted
+                                        ? importSort.direction === "asc"
+                                          ? "▲"
+                                          : "▼"
+                                        : "↕"}
+                                    </span>
+                                  </button>
+                                </th>
+                              );
+                            })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importVisibleRecords.length === 0 ? (
+                            <tr>
+                              <td
+                                className="empty-state-cell"
+                                colSpan={importColumns.length + 1}
+                              >
+                                No contacts available.
+                              </td>
+                            </tr>
+                          ) : (
+                            importVisibleRecords.map((record) => {
+                              const rowId = String(record.__rowId);
+                              const isSelected = importSelectionSet.has(rowId);
+                              const contactName =
+                                record.full_name ??
+                                record.fullName ??
+                                record.email ??
+                                rowId;
+                              return (
+                                <tr
+                                  key={rowId}
+                                  className={isSelected ? "selected" : ""}
+                                  onClick={(event) =>
+                                    handleImportRowClick(event, rowId)
+                                  }
+                                >
+                                  <td className="select-cell">
+                                    <button
+                                      type="button"
+                                      className={`select-toggle${
+                                        isSelected ? " selected" : ""
+                                      }`}
+                                      onClick={() => handleToggleImportRow(rowId)}
+                                      aria-pressed={isSelected}
+                                      aria-label={
+                                        isSelected
+                                          ? `Deselect contact ${contactName}`
+                                          : `Select contact ${contactName}`
+                                      }
+                                    >
+                                      <span className="select-indicator" />
+                                    </button>
+                                  </td>
+                                  {importColumns.map((column) => {
+                                    const rawValue = record[column.id];
+                                    const value =
+                                      rawValue == null
+                                        ? ""
+                                        : typeof rawValue === "string"
+                                          ? rawValue
+                                          : String(rawValue);
+                                    const isEditable = IMPORT_EDITABLE_FIELDS.has(
+                                      column.id,
+                                    );
+                                    if (!isEditable) {
+                                      return (
+                                        <td key={column.id}>
+                                          {value ? value : "—"}
+                                        </td>
+                                      );
+                                    }
+                                    return (
+                                      <td key={column.id} className="editable-cell">
+                                        <input
+                                          type="text"
+                                          className="import-table-input"
+                                          value={value}
+                                          onChange={(event) =>
+                                            handleImportFieldChange(
+                                              rowId,
+                                              column.id,
+                                              event.target.value,
+                                            )
+                                          }
+                                          placeholder={column.label}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="table-footer import-table-footer">
+                      <span className="table-summary">
+                        {importVisibleRecords.length === 0
+                          ? "No contacts available."
+                          : `Showing ${importRangeStart} – ${importRangeEnd} of ${importTotalRecords}`}
+                      </span>
+                      <div className="import-footer-actions">
+                        <div className="pagination-controls">
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() =>
+                              setImportPageIndex(
+                                Math.max(currentImportPageIndex - 1, 0),
+                              )
+                            }
+                            disabled={currentImportPageIndex === 0}
+                          >
+                            Previous
+                          </button>
+                          {importPageNumbers.map((page) => (
+                            <button
+                              key={page}
+                              type="button"
+                              className={`page-button${
+                                page - 1 === currentImportPageIndex
+                                  ? " active"
+                                  : ""
+                              }`}
+                              onClick={() => setImportPageIndex(page - 1)}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() =>
+                              setImportPageIndex(
+                                Math.min(
+                                  currentImportPageIndex + 1,
+                                  importTotalPages - 1,
+                                ),
+                              )
+                            }
+                            disabled={
+                              importTotalPages === 0 ||
+                              currentImportPageIndex >= importTotalPages - 1
+                            }
+                          >
+                            Next
+                          </button>
+                        </div>
+                        <button
+                          type="submit"
+                          value="import1"
+                          className="button primary import-submit-button"
+                          disabled={disableSubmit || importSelectionCount === 0}
+                          aria-busy={loadingAction === "import1"}
+                        >
+                          {loadingAction === "import1" ? (
+                            <IconLoader />
+                          ) : importSubmitStatus === "saved" ? (
+                            <IconCheck className="button-icon" />
+                          ) : null}
+                          {loadingAction === "import1"
+                            ? "Saving…"
+                            : importSubmitStatus === "saved"
+                              ? "Saved"
+                              : "Save Selected"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="helper-text import-selection-helper">
+                      {importSelectionSummary}
+                    </div>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          )}
+
           {activePage === "view" && (
             <div role="tabpanel" id="view-panel" aria-labelledby="view-tab">
               <form className="simple-form" onSubmit={handleSubmit} noValidate>
@@ -2628,12 +4124,12 @@ export default function Rolodex() {
                   <button
                     type="submit"
                     value="view"
-                    className="button secondary"
+                    className="button tertiary load-contacts-button"
                     disabled={disableSubmit}
                     aria-busy={loadingAction === "view"}
                   >
                     {loadingAction === "view" ? <IconLoader /> : null}
-                    {loadingAction === "view" ? "Viewing…" : "View"}
+                    {loadingAction === "view" ? "Loading…" : "Load Contacts"}
                   </button>
                 </div>
               </form>
@@ -2685,11 +4181,48 @@ export default function Rolodex() {
                     Load contacts to choose recipients.
                   </p>
                 ) : (
-                  <div
-                    className="table-scroll recipient-table-scroll"
-                    role="group"
-                    aria-labelledby="recipient-label"
-                  >
+                  <>
+                    <div className="table-toolbar">
+                      <div className="table-search">
+                        <label htmlFor="emailSearch" className="visually-hidden">
+                          Search contacts
+                        </label>
+                        <input
+                          id="emailSearch"
+                          type="search"
+                          className="table-search-input"
+                          value={emailSearchTerm}
+                          onChange={(event) => setEmailSearchTerm(event.target.value)}
+                          placeholder="Search contacts"
+                        />
+                      </div>
+                      <div className="table-page-size">
+                        <label htmlFor="emailPageSize">Rows per page</label>
+                        <select
+                          id="emailPageSize"
+                          value={emailResolvedPageSize}
+                          onChange={(event) => {
+                            const next = Number(event.target.value);
+                            setEmailPageSize(
+                              Number.isNaN(next) || next <= 0
+                                ? TABLE_PAGE_SIZES[0]
+                                : next,
+                            );
+                          }}
+                        >
+                          {TABLE_PAGE_SIZES.map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div
+                      className="table-scroll recipient-table-scroll"
+                      role="group"
+                      aria-labelledby="recipient-label"
+                    >
                     <table className="view-table recipient-table">
                       {isSampleEmailContacts && (
                         <caption className="view-table-caption">
@@ -2706,122 +4239,216 @@ export default function Rolodex() {
                               <input
                                 ref={selectAllRef}
                                 type="checkbox"
-                                onChange={handleToggleSelectAll}
-                                checked={allRecipientsSelected}
-                                disabled={allRecipientIds.length === 0}
+                                onChange={() =>
+                                  handleToggleSelectAll(displayedRecipientIds)
+                                }
+                                checked={displayedRecipientsSelected}
+                                disabled={displayedRecipientIds.length === 0}
                                 aria-label="Select all recipients"
                               />
                             </label>
                           </th>
-                          <th scope="col">Contact ID</th>
-                          <th scope="col">Full Name</th>
-                          <th scope="col">Title</th>
-                          <th scope="col">Company</th>
-                          <th scope="col">Location</th>
-                          <th scope="col">Profile URL</th>
-                          <th scope="col">Email</th>
-                          <th scope="col">Engagement</th>
-                          <th scope="col">Last Updated</th>
+                          {emailColumns.map((column) => {
+                            const isSorted = emailSort.key === column.id;
+                            const ariaSort = isSorted
+                              ? emailSort.direction === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : "none";
+                            return (
+                              <th
+                                key={column.id}
+                                scope="col"
+                                aria-sort={ariaSort}
+                                className={column.id === "local_id" ? "id-column" : ""}
+                              >
+                                <button
+                                  type="button"
+                                  className={`sort-button${
+                                    isSorted ? " active" : ""
+                                  }`}
+                                  onClick={() => handleEmailSort(column.id)}
+                                >
+                                  <span>{column.label}</span>
+                                  <span className="sort-indicator" aria-hidden="true">
+                                    {isSorted
+                                      ? emailSort.direction === "asc"
+                                        ? "▲"
+                                        : "▼"
+                                      : "↕"}
+                                  </span>
+                                </button>
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>
-                        {emailContacts.map((contact) => {
-                          const id =
-                            contact.__contactId || resolveContactId(contact);
-                          if (!id) {
-                            return null;
-                          }
-                          const normalizedId = String(id);
-                          const isSelected =
-                            emailRecipients.includes(normalizedId);
-                          const profileLink = formatProfileHref(
-                            contact.profile_url ?? contact.profileUrl,
-                          );
-                          const engagement = computeEngagementStatus(contact);
-                          const lastUpdatedDisplay = formatTimestamp(
-                            contact.last_updated ??
-                              contact.updated_at ??
-                              contact.updatedAt,
-                          );
-                          const lastMessagedDisplay = formatTimestamp(
-                            contact.last_contacted ??
-                              contact.last_messaged ??
-                              contact.lastMessaged ??
-                              contact.last_contacted_at,
-                          );
-                          const contactName =
-                            resolveContactName(contact) || normalizedId;
-                          return (
-                            <tr
-                              key={normalizedId}
-                              className={isSelected ? "selected" : ""}
-                              onClick={(event) =>
-                                handleRecipientRowClick(event, normalizedId)
-                              }
-                            >
-                              <td className="select-cell">
-                                <button
-                                  type="button"
-                                  className={`select-toggle${isSelected ? " selected" : ""}`}
-                                  onClick={() =>
-                                    handleToggleRecipient(normalizedId)
-                                  }
-                                  aria-pressed={isSelected}
-                                  aria-label={
-                                    isSelected
-                                      ? `Deselect contact ${contactName}`
-                                      : `Select contact ${contactName}`
-                                  }
-                                >
-                                  <span className="select-indicator" />
-                                </button>
-                              </td>
-                              <td>{normalizedId}</td>
-                              <td>{resolveContactName(contact) || "—"}</td>
-                              <td>{contact.title ?? "—"}</td>
-                              <td>{contact.company ?? "—"}</td>
-                              <td>{contact.location ?? "—"}</td>
-                              <td>
-                                {profileLink ? (
-                                  <a
-                                    href={profileLink}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    {contact.profile_url ?? contact.profileUrl}
-                                  </a>
-                                ) : (
-                                  "—"
-                                )}
-                              </td>
-                              <td>{contact.email ?? "—"}</td>
-                              <td>
-                                <div className="engagement-cell">
-                                  <span
-                                    className={`status-dot ${engagement.color}`}
-                                    title={
-                                      lastMessagedDisplay === "—"
-                                        ? engagement.label
-                                        : `${engagement.label} (${lastMessagedDisplay})`
+                    {emailVisibleContacts.length === 0 ? (
+                      <tr>
+                        <td
+                          className="empty-state-cell"
+                          colSpan={emailColumns.length + 1}
+                        >
+                          No contacts available.
+                        </td>
+                      </tr>
+                    ) : (
+                          emailVisibleContacts.map((contact) => {
+                            const id =
+                              contact.__contactId || resolveContactId(contact);
+                            if (!id) {
+                              return null;
+                            }
+                            const normalizedId = String(id);
+                            const localIdValue =
+                              contact.local_id ??
+                              contact.localId ??
+                              contact.contact_id ??
+                              contact.contactId ??
+                              normalizedId;
+                            const localIdDisplay = localIdValue
+                              ? String(localIdValue)
+                              : "—";
+                            const isSelected =
+                              emailRecipients.includes(normalizedId);
+                            const profileLink = formatProfileHref(
+                              contact.profile_url ?? contact.profileUrl,
+                            );
+                            const engagement = computeEngagementStatus(contact);
+                            const lastMessagedDisplay = formatTimestamp(
+                              contact.last_contacted ??
+                                contact.last_messaged ??
+                                contact.lastMessaged ??
+                                contact.last_contacted_at,
+                            );
+                            const contactName =
+                              resolveContactName(contact) || normalizedId;
+                            return (
+                              <tr
+                                key={normalizedId}
+                                className={isSelected ? "selected" : ""}
+                                onClick={(event) =>
+                                  handleRecipientRowClick(event, normalizedId)
+                                }
+                              >
+                                <td className="select-cell">
+                                  <button
+                                    type="button"
+                                    className={`select-toggle${isSelected ? " selected" : ""}`}
+                                    onClick={() =>
+                                      handleToggleRecipient(normalizedId)
                                     }
+                                    aria-pressed={isSelected}
                                     aria-label={
-                                      lastMessagedDisplay === "—"
-                                        ? engagement.label
-                                        : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                      isSelected
+                                        ? `Deselect contact ${contactName}`
+                                        : `Select contact ${contactName}`
                                     }
-                                  />
-                                  <span className="status-text">
-                                    {engagement.label}
-                                  </span>
-                                </div>
-                              </td>
-                              <td>{lastUpdatedDisplay}</td>
-                            </tr>
-                          );
-                        })}
+                                  >
+                                    <span className="select-indicator" />
+                                  </button>
+                                </td>
+                                <td className="id-cell">{localIdDisplay}</td>
+                                <td>{resolveContactName(contact) || "—"}</td>
+                                <td>{contact.title ?? "—"}</td>
+                                <td>{contact.company ?? "—"}</td>
+                                <td>{contact.location ?? "—"}</td>
+                                <td>
+                                  {profileLink ? (
+                                    <a
+                                      href={profileLink}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      {contact.profile_url ?? contact.profileUrl}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                                <td>{contact.email ?? "—"}</td>
+                                <td>
+                                  <div className="engagement-cell">
+                                    <span
+                                      className={`status-dot ${engagement.color}`}
+                                      title={
+                                        lastMessagedDisplay === "—"
+                                          ? engagement.label
+                                          : `${engagement.label} (${lastMessagedDisplay})`
+                                      }
+                                      aria-label={
+                                        lastMessagedDisplay === "—"
+                                          ? engagement.label
+                                          : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                      }
+                                    />
+                                    <span className="status-text">
+                                      {engagement.label}
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                    <div className="table-footer">
+                      <span className="table-summary">
+                        {emailVisibleContacts.length === 0
+                          ? "No contacts available."
+                          : `Showing ${emailRangeStart} – ${emailRangeEnd} of ${emailTotalRecords}`}
+                      </span>
+                      <div className="pagination-controls">
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() =>
+                            setEmailPageIndex(
+                              Math.max(currentEmailPageIndex - 1, 0),
+                            )
+                          }
+                          disabled={currentEmailPageIndex === 0}
+                        >
+                          Previous
+                        </button>
+                        {emailPageNumbers.map((page) => (
+                          <button
+                            key={page}
+                            type="button"
+                            className={`page-button${
+                              page - 1 === currentEmailPageIndex
+                                ? " active"
+                                : ""
+                            }`}
+                            onClick={() => setEmailPageIndex(page - 1)}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() =>
+                            setEmailPageIndex(
+                              Math.min(
+                                currentEmailPageIndex + 1,
+                                emailTotalPages - 1,
+                              ),
+                            )
+                          }
+                          disabled={
+                            emailTotalPages === 0 ||
+                            currentEmailPageIndex >= emailTotalPages - 1
+                          }
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
                 <div className="helper-text recipients-helper">
                   {emailRecipients.length > 0
@@ -3250,14 +4877,15 @@ export default function Rolodex() {
                                   </td>
                                 </tr>
                               );
-                            })}
+                            })
+                          }
                           </tbody>
                         </table>
                       </div>
                     ) : rewriteResponse ? (
-                      <pre className="preview-body-pre preview-response-raw">
-                        {rewriteResponseJson}
-                      </pre>
+                      <div className="preview-response-empty">
+                        No formatted responses available yet.
+                      </div>
                     ) : null}
                   </div>
                 )}
@@ -3500,116 +5128,220 @@ export default function Rolodex() {
             )}
 
           {resolvedViewRecords.length > 0 && (
-            <div className="table-scroll">
-              <table className="view-table">
-                {isSampleView && (
-                  <caption className="view-table-caption">
-                    Sample contact shown. Load a contact to see live data.
-                  </caption>
-                )}
-                <thead>
-                  <tr>
-                    <th scope="col">Contact ID</th>
-                    <th scope="col">Full Name</th>
-                    <th scope="col">Title</th>
-                    <th scope="col">Company</th>
-                    <th scope="col">Location</th>
-                    <th scope="col">Profile URL</th>
-                    <th scope="col">Email</th>
-                    <th scope="col">Engagement</th>
-                    <th scope="col">Last Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resolvedViewRecords.map((record, index) => {
-                    const contactIdValue = resolveContactId(record);
-                    const key = contactIdValue || index;
-                    const profileLink = formatProfileHref(
-                      record.profile_url ?? record.profileUrl,
-                    );
-                    const engagement = computeEngagementStatus(record);
-                    const lastUpdatedDisplay = formatTimestamp(
-                      record.last_updated ??
-                        record.updated_at ??
-                        record.updatedAt,
-                    );
-                    const lastMessagedDisplay = formatTimestamp(
-                      record.last_contacted ??
-                        record.last_messaged ??
-                        record.lastMessaged ??
-                        record.last_contacted_at,
-                    );
-                    return (
-                      <tr key={key}>
-                        <td className="contact-id-cell">
-                          {contactIdValue ? (
+            <div className="table-section">
+              <div className="table-toolbar">
+                <div className="table-search">
+                  <label htmlFor="viewSearch" className="visually-hidden">
+                    Search contacts
+                  </label>
+                  <input
+                    id="viewSearch"
+                    type="search"
+                    className="table-search-input"
+                    value={viewSearchTerm}
+                    onChange={(event) => setViewSearchTerm(event.target.value)}
+                    placeholder="Search contacts"
+                  />
+                </div>
+                <div className="table-page-size">
+                  <label htmlFor="viewPageSize">Rows per page</label>
+                  <select
+                    id="viewPageSize"
+                    value={viewResolvedPageSize}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      setViewPageSize(
+                        Number.isNaN(next) || next <= 0
+                          ? TABLE_PAGE_SIZES[0]
+                          : next,
+                      );
+                    }}
+                  >
+                    {TABLE_PAGE_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="table-scroll">
+                <table className="view-table">
+                  {isSampleView && (
+                    <caption className="view-table-caption">
+                      Sample contact shown. Load a contact to see live data.
+                    </caption>
+                  )}
+                  <thead>
+                    <tr>
+                      {viewColumns.map((column) => {
+                        const isSorted = viewSort.key === column.id;
+                        const ariaSort = isSorted
+                          ? viewSort.direction === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none";
+                        return (
+                          <th
+                            key={column.id}
+                            scope="col"
+                            aria-sort={ariaSort}
+                            className={column.id === "local_id" ? "id-column" : ""}
+                          >
                             <button
                               type="button"
-                              className="contact-id-button"
-                              onClick={() =>
-                                copyContactIdToClipboard(contactIdValue)
-                              }
-                              aria-label={`Copy contact ID ${contactIdValue}`}
+                              className={`sort-button${
+                                isSorted ? " active" : ""
+                              }`}
+                              onClick={() => handleViewSort(column.id)}
                             >
-                              <span>{contactIdValue}</span>
-                              <IconCopy />
+                              <span>{column.label}</span>
+                              <span
+                                className="sort-indicator"
+                                aria-hidden="true"
+                              >
+                                {isSorted
+                                  ? viewSort.direction === "asc"
+                                    ? "▲"
+                                    : "▼"
+                                  : "↕"}
+                              </span>
                             </button>
-                          ) : (
-                            "—"
-                          )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewVisibleRecords.length === 0 ? (
+                      <tr>
+                        <td
+                          className="empty-state-cell"
+                          colSpan={viewColumns.length}
+                        >
+                          No contacts available.
                         </td>
-                        <td>{record.full_name ?? record.fullName ?? "—"}</td>
-                        <td>{record.title ?? "—"}</td>
-                        <td>{record.company ?? "—"}</td>
-                        <td>{record.location ?? "—"}</td>
-                        <td>
-                          {profileLink ? (
-                            <a
-                              href={profileLink}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {record.profile_url ?? record.profileUrl}
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td>{record.email ?? "—"}</td>
-                        <td>
-                          <div className="engagement-cell">
-                            <span
-                              className={`status-dot ${engagement.color}`}
-                              title={
-                                lastMessagedDisplay === "—"
-                                  ? engagement.label
-                                  : `${engagement.label} (${lastMessagedDisplay})`
-                              }
-                              aria-label={
-                                lastMessagedDisplay === "—"
-                                  ? engagement.label
-                                  : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
-                              }
-                            />
-                            <span className="status-text">
-                              {engagement.label}
-                            </span>
-                          </div>
-                        </td>
-                        <td>{lastUpdatedDisplay}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ) : (
+                      viewVisibleRecords.map((record, index) => {
+                        const contactIdValue = resolveContactId(record);
+                        const key = contactIdValue || index;
+                        const localIdValue =
+                          record.local_id ??
+                          record.localId ??
+                          record.contact_id ??
+                          record.contactId ??
+                          contactIdValue;
+                        const localIdDisplay = localIdValue
+                          ? String(localIdValue)
+                          : "—";
+                        const profileLink = formatProfileHref(
+                          record.profile_url ?? record.profileUrl,
+                        );
+                        const engagement = computeEngagementStatus(record);
+                        const lastMessagedDisplay = formatTimestamp(
+                          record.last_contacted ??
+                            record.last_messaged ??
+                            record.lastMessaged ??
+                            record.last_contacted_at,
+                        );
+                        return (
+                          <tr key={key}>
+                            <td className="id-cell">{localIdDisplay}</td>
+                            <td>{record.full_name ?? record.fullName ?? "—"}</td>
+                            <td>{record.title ?? "—"}</td>
+                            <td>{record.company ?? "—"}</td>
+                            <td>{record.location ?? "—"}</td>
+                            <td>
+                              {profileLink ? (
+                                <a
+                                  href={profileLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {record.profile_url ?? record.profileUrl}
+                                </a>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td>{record.email ?? "—"}</td>
+                            <td>
+                              <div className="engagement-cell">
+                                <span
+                                  className={`status-dot ${engagement.color}`}
+                                  title={
+                                    lastMessagedDisplay === "—"
+                                      ? engagement.label
+                                      : `${engagement.label} (${lastMessagedDisplay})`
+                                  }
+                                  aria-label={
+                                    lastMessagedDisplay === "—"
+                                      ? engagement.label
+                                      : `${engagement.label}. Last messaged ${lastMessagedDisplay}.`
+                                  }
+                                />
+                                <span className="status-text">
+                                  {engagement.label}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="table-footer">
+                <span className="table-summary">
+                  {viewVisibleRecords.length === 0
+                    ? "No contacts available."
+                    : `Showing ${viewRangeStart} – ${viewRangeEnd} of ${viewTotalRecords}`}
+                </span>
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="page-button"
+                    onClick={() =>
+                      setViewPageIndex(Math.max(currentViewPageIndex - 1, 0))
+                    }
+                    disabled={currentViewPageIndex === 0}
+                  >
+                    Previous
+                  </button>
+                  {viewPageNumbers.map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      className={`page-button${
+                        page - 1 === currentViewPageIndex ? " active" : ""
+                      }`}
+                      onClick={() => setViewPageIndex(page - 1)}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="page-button"
+                    onClick={() =>
+                      setViewPageIndex(
+                        Math.min(currentViewPageIndex + 1, viewTotalPages - 1),
+                      )
+                    }
+                    disabled={
+                      viewTotalPages === 0 ||
+                      currentViewPageIndex >= viewTotalPages - 1
+                    }
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          {showJsonResponse && (
-            <pre className="response-view" aria-live="polite">
-              {JSON.stringify(response, null, 2)}
-            </pre>
-          )}
         </div>
 
         <footer className="rolodex-legal" aria-label="Legal">
