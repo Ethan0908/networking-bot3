@@ -122,7 +122,6 @@ const DEFAULT_PREVIEW_MESSAGE = "[AI will write this]";
 const DEFAULT_BATCH_SIZE = 10;
 const TABLE_PAGE_SIZES = [5, 10, 25, 50, 100];
 const IMPORT_EDITABLE_FIELDS = new Set([
-  "contact_id",
   "full_name",
   "title",
   "company",
@@ -785,8 +784,8 @@ export default function Rolodex() {
   const [viewPageSize, setViewPageSize] = useState(5);
   const [viewPageIndex, setViewPageIndex] = useState(0);
   const [viewSort, setViewSort] = useState({
-    key: "last_updated",
-    direction: "desc",
+    key: "full_name",
+    direction: "asc",
   });
   const [emailPageSize, setEmailPageSize] = useState(5);
   const [emailPageIndex, setEmailPageIndex] = useState(0);
@@ -1367,13 +1366,6 @@ export default function Rolodex() {
               baseRecord.linkedin ??
               "",
             email: baseRecord.email ?? "",
-            last_updated:
-              baseRecord.last_updated ??
-              baseRecord.updated_at ??
-              baseRecord.updatedAt ??
-              baseRecord.last_contacted ??
-              baseRecord.lastContacted ??
-              "",
             raw,
           };
         });
@@ -1484,7 +1476,7 @@ export default function Rolodex() {
       }
       return {
         key: columnId,
-        direction: columnId === "last_updated" ? "desc" : "asc",
+        direction: "asc",
       };
     });
   }, []);
@@ -1499,7 +1491,7 @@ export default function Rolodex() {
       }
       return {
         key: columnId,
-        direction: columnId === "last_updated" ? "desc" : "asc",
+        direction: "asc",
       };
     });
   }, []);
@@ -1514,7 +1506,7 @@ export default function Rolodex() {
       }
       return {
         key: columnId,
-        direction: columnId === "last_updated" ? "desc" : "asc",
+        direction: "asc",
       };
     });
   }, []);
@@ -1589,9 +1581,6 @@ export default function Rolodex() {
           nextRaw.name = value;
         } else if (normalizedField === "profile_url") {
           nextRaw.profileUrl = value;
-        } else if (normalizedField === "contact_id") {
-          nextRaw.contactId = value;
-          nextRaw.id = value;
         } else if (normalizedField === "email") {
           nextRaw.email = value;
         } else if (normalizedField === "title") {
@@ -1781,7 +1770,6 @@ export default function Rolodex() {
         contact.location,
         contact.profile_url ?? contact.profileUrl,
         resolveContactEmail(contact),
-        contact.last_updated ?? contact.updated_at ?? contact.updatedAt ?? "",
         contact.last_contacted ??
           contact.last_messaged ??
           contact.lastMessaged ??
@@ -1819,8 +1807,6 @@ export default function Rolodex() {
 
     const getSortValue = (record) => {
       switch (emailSort.key) {
-        case "contact_id":
-          return resolveContactId(record);
         case "full_name":
           return resolveContactName(record);
         case "title":
@@ -1847,17 +1833,8 @@ export default function Rolodex() {
           const status = computeEngagementStatus(record);
           return status?.label ?? "";
         }
-        case "last_updated":
         default: {
-          const candidate =
-            record.last_updated ??
-            record.updated_at ??
-            record.updatedAt ??
-            record.created_at ??
-            record.createdAt ??
-            null;
-          const parsed = candidate ? Date.parse(candidate) : Number.NaN;
-          return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+          return resolveContactName(record);
         }
       }
     };
@@ -1907,7 +1884,6 @@ export default function Rolodex() {
     emailPageSize,
     emailSort,
     resolveContactEmail,
-    resolveContactId,
     resolveContactName,
   ]);
 
@@ -1924,8 +1900,6 @@ export default function Rolodex() {
 
     const getSortValue = (record) => {
       switch (importSort.key) {
-        case "contact_id":
-          return record.contact_id ?? resolveContactId(record);
         case "full_name":
           return record.full_name ?? record.fullName ?? record.name ?? "";
         case "title":
@@ -1938,18 +1912,8 @@ export default function Rolodex() {
           return record.profile_url ?? record.profileUrl ?? "";
         case "email":
           return record.email ?? "";
-        case "last_updated":
-        default: {
-          const candidate =
-            record.last_updated ??
-            record.updated_at ??
-            record.updatedAt ??
-            record.created_at ??
-            record.createdAt ??
-            null;
-          const parsed = candidate ? Date.parse(candidate) : Number.NaN;
-          return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-        }
+        default:
+          return record.full_name ?? record.fullName ?? record.name ?? "";
       }
     };
 
@@ -1991,13 +1955,7 @@ export default function Rolodex() {
       currentPageIndex: safePageIndex,
       pageSize,
     };
-  }, [
-    importPageIndex,
-    importPageSize,
-    importResults,
-    importSort,
-    resolveContactId,
-  ]);
+  }, [importPageIndex, importPageSize, importResults, importSort]);
 
   const {
     visibleRecords: emailVisibleContacts,
@@ -3353,7 +3311,6 @@ export default function Rolodex() {
 
   const viewColumns = useMemo(
     () => [
-      { id: "contact_id", label: "Contact ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3361,14 +3318,12 @@ export default function Rolodex() {
       { id: "profile_url", label: "Profile URL" },
       { id: "email", label: "Email" },
       { id: "engagement", label: "Engagement" },
-      { id: "last_updated", label: "Last Updated" },
     ],
     [],
   );
 
   const emailColumns = useMemo(
     () => [
-      { id: "contact_id", label: "Contact ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3376,21 +3331,18 @@ export default function Rolodex() {
       { id: "profile_url", label: "Profile URL" },
       { id: "email", label: "Email" },
       { id: "engagement", label: "Engagement" },
-      { id: "last_updated", label: "Last Updated" },
     ],
     [],
   );
 
   const importColumns = useMemo(
     () => [
-      { id: "contact_id", label: "Contact ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
       { id: "location", label: "Location" },
       { id: "profile_url", label: "Profile URL" },
       { id: "email", label: "Email" },
-      { id: "last_updated", label: "Last Updated" },
     ],
     [],
   );
@@ -3444,9 +3396,7 @@ export default function Rolodex() {
     }
     return resolvedViewRecords.filter((record) => {
       const values = [
-        resolveContactId(record),
         resolveContactName(record),
-        record.contact_id,
         record.full_name ?? record.fullName ?? record.name,
         record.title,
         record.company,
@@ -3454,12 +3404,6 @@ export default function Rolodex() {
         record.profile_url ?? record.profileUrl,
         record.email,
         record.engagement_label ?? record.engagementLabel ?? record.status,
-        record.last_updated ??
-          record.updated_at ??
-          record.updatedAt ??
-          record.created_at ??
-          record.createdAt ??
-          "",
         record.last_contacted ??
           record.last_messaged ??
           record.lastMessaged ??
@@ -3477,7 +3421,6 @@ export default function Rolodex() {
     });
   }, [
     computeEngagementStatus,
-    resolveContactId,
     resolveContactName,
     resolvedViewRecords,
     viewSearchTerm,
@@ -3494,18 +3437,8 @@ export default function Rolodex() {
     }
     const filtered = viewFilteredRecords;
 
-    const parseDate = (value) => {
-      if (!value) {
-        return Number.NEGATIVE_INFINITY;
-      }
-      const time = Date.parse(value);
-      return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
-    };
-
     const getSortValue = (record) => {
       switch (viewSort.key) {
-        case "contact_id":
-          return resolveContactId(record);
         case "full_name":
           return (
             record.full_name ??
@@ -3537,16 +3470,14 @@ export default function Rolodex() {
           const status = computeEngagementStatus(record);
           return status?.label ?? "";
         }
-        case "last_updated":
         default: {
-          const candidate =
-            record.last_updated ??
-            record.updated_at ??
-            record.updatedAt ??
-            record.created_at ??
-            record.createdAt ??
-            null;
-          return parseDate(candidate);
+          return (
+            record.full_name ??
+            record.fullName ??
+            record.name ??
+            resolveContactName(record) ??
+            ""
+          );
         }
       }
     };
@@ -3591,7 +3522,6 @@ export default function Rolodex() {
     };
   }, [
     computeEngagementStatus,
-    resolveContactId,
     viewFilteredRecords,
     viewPageIndex,
     viewPageSize,
@@ -3976,14 +3906,6 @@ export default function Rolodex() {
                                     const isEditable = IMPORT_EDITABLE_FIELDS.has(
                                       column.id,
                                     );
-                                    if (column.id === "last_updated") {
-                                      const formatted = value
-                                        ? formatTimestamp(value)
-                                        : "—";
-                                      return (
-                                        <td key={column.id}>{formatted || "—"}</td>
-                                      );
-                                    }
                                     if (!isEditable) {
                                       return (
                                         <td key={column.id}>
@@ -3992,7 +3914,7 @@ export default function Rolodex() {
                                       );
                                     }
                                     return (
-                                      <td key={column.id}>
+                                      <td key={column.id} className="editable-cell">
                                         <input
                                           type="text"
                                           className="import-table-input"
@@ -4284,11 +4206,6 @@ export default function Rolodex() {
                               contact.profile_url ?? contact.profileUrl,
                             );
                             const engagement = computeEngagementStatus(contact);
-                            const lastUpdatedDisplay = formatTimestamp(
-                              contact.last_updated ??
-                                contact.updated_at ??
-                                contact.updatedAt,
-                            );
                             const lastMessagedDisplay = formatTimestamp(
                               contact.last_contacted ??
                                 contact.last_messaged ??
@@ -4322,7 +4239,6 @@ export default function Rolodex() {
                                     <span className="select-indicator" />
                                   </button>
                                 </td>
-                                <td>{normalizedId}</td>
                                 <td>{resolveContactName(contact) || "—"}</td>
                                 <td>{contact.title ?? "—"}</td>
                                 <td>{contact.company ?? "—"}</td>
@@ -4361,7 +4277,6 @@ export default function Rolodex() {
                                     </span>
                                   </div>
                                 </td>
-                                <td>{lastUpdatedDisplay}</td>
                               </tr>
                             );
                           })
@@ -5199,11 +5114,6 @@ export default function Rolodex() {
                           record.profile_url ?? record.profileUrl,
                         );
                         const engagement = computeEngagementStatus(record);
-                        const lastUpdatedDisplay = formatTimestamp(
-                          record.last_updated ??
-                            record.updated_at ??
-                            record.updatedAt,
-                        );
                         const lastMessagedDisplay = formatTimestamp(
                           record.last_contacted ??
                             record.last_messaged ??
@@ -5212,23 +5122,6 @@ export default function Rolodex() {
                         );
                         return (
                           <tr key={key}>
-                            <td className="contact-id-cell">
-                              {contactIdValue ? (
-                                <button
-                                  type="button"
-                                  className="contact-id-button"
-                                  onClick={() =>
-                                    copyContactIdToClipboard(contactIdValue)
-                                  }
-                                  aria-label={`Copy contact ID ${contactIdValue}`}
-                                >
-                                  <span>{contactIdValue}</span>
-                                  <IconCopy />
-                                </button>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
                             <td>{record.full_name ?? record.fullName ?? "—"}</td>
                             <td>{record.title ?? "—"}</td>
                             <td>{record.company ?? "—"}</td>
@@ -5267,7 +5160,6 @@ export default function Rolodex() {
                                 </span>
                               </div>
                             </td>
-                            <td>{lastUpdatedDisplay}</td>
                           </tr>
                         );
                       })

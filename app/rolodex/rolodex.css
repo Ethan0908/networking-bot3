@@ -512,6 +512,17 @@ html.theme-dark {
   outline-offset: 2px;
 }
 
+.import-table td.editable-cell {
+  background: rgba(37, 99, 235, 0.06);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.import-table td.editable-cell:hover,
+.import-table td.editable-cell:focus-within {
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.35);
+}
+
 .import-table-footer {
   align-items: center;
 }
@@ -1656,52 +1667,6 @@ html.theme-dark {
   background: rgba(37, 99, 235, 0.08);
   font-weight: 600;
   color: var(--text-secondary);
-}
-
-.contact-id-cell {
-  white-space: nowrap;
-}
-
-.contact-id-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-}
-
-.contact-id-button span {
-  font-variant-numeric: tabular-nums;
-}
-
-.contact-id-button svg {
-  width: 14px;
-  height: 14px;
-  color: var(--text-secondary);
-  transition: color 0.15s ease;
-}
-
-.contact-id-button:hover {
-  background: rgba(37, 99, 235, 0.1);
-}
-
-.contact-id-button:focus-visible {
-  background: rgba(37, 99, 235, 0.12);
-  outline: 2px solid rgba(37, 99, 235, 0.45);
-  outline-offset: 2px;
-}
-
-.contact-id-button:hover svg,
-.contact-id-button:focus-visible svg {
-  color: var(--text-primary);
 }
 
 .view-table tbody tr:last-child td {
