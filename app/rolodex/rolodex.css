@@ -472,6 +472,69 @@ html.theme-dark {
   flex: 1 1 240px;
 }
 
+.import-results-form {
+  margin-top: 16px;
+}
+
+.import-results-section {
+  gap: 16px;
+}
+
+.import-results-toolbar {
+  gap: 16px;
+}
+
+.import-results-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.import-table-scroll {
+  overflow: auto;
+}
+
+.import-table {
+  min-width: 760px;
+}
+
+.import-table-input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: var(--input-background);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.import-table-input:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.import-table-footer {
+  align-items: center;
+}
+
+.import-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.import-submit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.import-selection-helper {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 .selected-file {
   margin-top: 6px;
   color: var(--text-secondary);
@@ -626,13 +689,15 @@ html.theme-dark {
   font-size: 0.9rem;
 }
 
-.recipient-table .select-header {
+.recipient-table .select-header,
+.import-table .select-header {
   width: 110px;
   text-align: center;
   color: var(--text-secondary);
 }
 
-.recipient-table .select-cell {
+.recipient-table .select-cell,
+.import-table .select-cell {
   text-align: center;
   padding-left: 6px;
   padding-right: 6px;
@@ -682,11 +747,13 @@ html.theme-dark {
   border-color: rgba(37, 99, 235, 0.9);
 }
 
-.recipient-table tbody tr.selected {
+.recipient-table tbody tr.selected,
+.import-table tbody tr.selected {
   background: var(--recipient-selected-bg);
 }
 
-.recipient-table tbody tr.selected .select-toggle {
+.recipient-table tbody tr.selected .select-toggle,
+.import-table tbody tr.selected .select-toggle {
   border-color: rgba(37, 99, 235, 0.65);
 }
 
