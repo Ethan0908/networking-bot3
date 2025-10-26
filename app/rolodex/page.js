@@ -3415,7 +3415,6 @@ export default function Rolodex() {
 
   const importColumns = useMemo(
     () => [
-      { id: "local_id", label: "Local ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3921,9 +3920,6 @@ export default function Rolodex() {
                                   key={column.id}
                                   scope="col"
                                   aria-sort={ariaSort}
-                                  className={
-                                    column.id === "local_id" ? "id-column" : undefined
-                                  }
                                 >
                                   <button
                                     type="button"
@@ -4004,11 +4000,9 @@ export default function Rolodex() {
                                     const isEditable = IMPORT_EDITABLE_FIELDS.has(
                                       column.id,
                                     );
-                                    const cellClassName =
-                                      column.id === "local_id" ? "id-cell" : undefined;
                                     if (!isEditable) {
                                       return (
-                                        <td key={column.id} className={cellClassName}>
+                                        <td key={column.id}>
                                           {value ? value : "—"}
                                         </td>
                                       );
