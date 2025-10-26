@@ -775,6 +775,7 @@ export default function Rolodex() {
   const [csvImportError, setCsvImportError] = useState("");
   const [importResults, setImportResults] = useState([]);
   const [importSelection, setImportSelection] = useState([]);
+  const [importSubmitStatus, setImportSubmitStatus] = useState("idle");
   const [importSort, setImportSort] = useState({
     key: "full_name",
     direction: "asc",
@@ -819,6 +820,20 @@ export default function Rolodex() {
   const importSelectAllRef = useRef(null);
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
+  const importSubmitResetRef = useRef(null);
+
+  const clearImportSubmitReset = useCallback(() => {
+    if (importSubmitResetRef.current) {
+      clearTimeout(importSubmitResetRef.current);
+      importSubmitResetRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearImportSubmitReset();
+    };
+  }, [clearImportSubmitReset]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1099,16 +1114,16 @@ export default function Rolodex() {
         return;
       }
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-        pushToast("info", "Contact ID copied.");
+        pushToast("info", "Local ID copied.");
         return;
       }
       navigator.clipboard
         .writeText(trimmed)
         .then(() => {
-          pushToast("info", "Contact ID copied.");
+          pushToast("info", "Local ID copied.");
         })
         .catch(() => {
-          pushToast("error", "Unable to copy contact ID.");
+          pushToast("error", "Unable to copy local ID.");
         });
     },
     [pushToast],
@@ -1466,20 +1481,25 @@ export default function Rolodex() {
     [pushToast],
   );
 
-  const handleImportSort = useCallback((columnId) => {
-    setImportSort((prev) => {
-      if (prev.key === columnId) {
+  const handleImportSort = useCallback(
+    (columnId) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      setImportSort((prev) => {
+        if (prev.key === columnId) {
+          return {
+            key: columnId,
+            direction: prev.direction === "asc" ? "desc" : "asc",
+          };
+        }
         return {
           key: columnId,
-          direction: prev.direction === "asc" ? "desc" : "asc",
+          direction: "asc",
         };
-      }
-      return {
-        key: columnId,
-        direction: "asc",
-      };
-    });
-  }, []);
+      });
+    },
+    [clearImportSubmitReset],
+  );
 
   const handleViewSort = useCallback((columnId) => {
     setViewSort((prev) => {
@@ -1520,17 +1540,24 @@ export default function Rolodex() {
     });
   }, []);
 
-  const handleToggleImportRow = useCallback((rowId) => {
-    const normalizedId = String(rowId);
-    setImportSelection((prev) =>
-      prev.includes(normalizedId)
-        ? prev.filter((id) => id !== normalizedId)
-        : [...prev, normalizedId],
-    );
-  }, []);
+  const handleToggleImportRow = useCallback(
+    (rowId) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      const normalizedId = String(rowId);
+      setImportSelection((prev) =>
+        prev.includes(normalizedId)
+          ? prev.filter((id) => id !== normalizedId)
+          : [...prev, normalizedId],
+      );
+    },
+    [clearImportSubmitReset],
+  );
 
   const handleToggleImportSelectAll = useCallback(
     (ids) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
       const targetIds = Array.isArray(ids) && ids.length > 0
         ? ids.map(String)
         : importResults.map((record) => String(record.__rowId));
@@ -1549,7 +1576,7 @@ export default function Rolodex() {
         return Array.from(next);
       });
     },
-    [importResults],
+    [clearImportSubmitReset, importResults],
   );
 
   const handleImportRowClick = useCallback(
@@ -1567,37 +1594,42 @@ export default function Rolodex() {
     [handleToggleImportRow],
   );
 
-  const handleImportFieldChange = useCallback((rowId, field, value) => {
-    setImportResults((prev) =>
-      prev.map((record) => {
-        if (String(record.__rowId) !== String(rowId)) {
-          return record;
-        }
-        const normalizedField = field;
-        const nextRaw = { ...(record.raw ?? {}) };
-        nextRaw[normalizedField] = value;
-        if (normalizedField === "full_name") {
-          nextRaw.fullName = value;
-          nextRaw.name = value;
-        } else if (normalizedField === "profile_url") {
-          nextRaw.profileUrl = value;
-        } else if (normalizedField === "email") {
-          nextRaw.email = value;
-        } else if (normalizedField === "title") {
-          nextRaw.title = value;
-        } else if (normalizedField === "company") {
-          nextRaw.company = value;
-        } else if (normalizedField === "location") {
-          nextRaw.location = value;
-        }
-        return {
-          ...record,
-          [normalizedField]: value,
-          raw: nextRaw,
-        };
-      }),
-    );
-  }, []);
+  const handleImportFieldChange = useCallback(
+    (rowId, field, value) => {
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      setImportResults((prev) =>
+        prev.map((record) => {
+          if (String(record.__rowId) !== String(rowId)) {
+            return record;
+          }
+          const normalizedField = field;
+          const nextRaw = { ...(record.raw ?? {}) };
+          nextRaw[normalizedField] = value;
+          if (normalizedField === "full_name") {
+            nextRaw.fullName = value;
+            nextRaw.name = value;
+          } else if (normalizedField === "profile_url") {
+            nextRaw.profileUrl = value;
+          } else if (normalizedField === "email") {
+            nextRaw.email = value;
+          } else if (normalizedField === "title") {
+            nextRaw.title = value;
+          } else if (normalizedField === "company") {
+            nextRaw.company = value;
+          } else if (normalizedField === "location") {
+            nextRaw.location = value;
+          }
+          return {
+            ...record,
+            [normalizedField]: value,
+            raw: nextRaw,
+          };
+        }),
+      );
+    },
+    [clearImportSubmitReset],
+  );
 
   const handleRecipientRowClick = useCallback(
     (event, id) => {
@@ -1763,6 +1795,8 @@ export default function Rolodex() {
     }
     return emailContacts.filter((contact) => {
       const values = [
+        contact.local_id ?? contact.localId ?? null,
+        contact.contact_id ?? contact.contactId ?? null,
         contact.__contactId || resolveContactId(contact),
         resolveContactName(contact),
         contact.title,
@@ -1807,6 +1841,15 @@ export default function Rolodex() {
 
     const getSortValue = (record) => {
       switch (emailSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
         case "full_name":
           return resolveContactName(record);
         case "title":
@@ -2978,6 +3021,8 @@ export default function Rolodex() {
       }
       setLastAction(action);
       setLoadingAction(action);
+      clearImportSubmitReset();
+      setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
       setUsernameHighlight(false);
       setContactHighlight(false);
@@ -3013,7 +3058,7 @@ export default function Rolodex() {
 
       if (action === "update") {
         if (!trimmedContactId) {
-          const message = "Contact ID is required to update.";
+          const message = "Local ID is required to update.";
           setErrorMessage(message);
           pushToast("error", message);
           setContactHighlight(true);
@@ -3063,6 +3108,7 @@ export default function Rolodex() {
           const message = "Select at least one contact to import.";
           setErrorMessage(message);
           pushToast("error", message);
+          setImportSubmitStatus("idle");
           setLoadingAction(null);
           return;
         }
@@ -3075,6 +3121,7 @@ export default function Rolodex() {
           setErrorMessage(message);
           pushToast("error", message);
           setImportSelection([]);
+          setImportSubmitStatus("idle");
           setLoadingAction(null);
           return;
         }
@@ -3117,6 +3164,8 @@ export default function Rolodex() {
           setImportResults(normalized);
           setImportSelection([]);
           setImportPageIndex(0);
+          setImportSubmitStatus("idle");
+          clearImportSubmitReset();
         }
         if (action === "create") {
           pushToast("success", "Contact created.");
@@ -3138,6 +3187,12 @@ export default function Rolodex() {
         } else if (action === "import1") {
           pushToast("success", "Import requested.");
           setImportSelection([]);
+          setImportSubmitStatus("saved");
+          clearImportSubmitReset();
+          importSubmitResetRef.current = window.setTimeout(() => {
+            setImportSubmitStatus("idle");
+            importSubmitResetRef.current = null;
+          }, 2500);
         }
       } catch (error) {
         const messageText =
@@ -3145,6 +3200,10 @@ export default function Rolodex() {
         setErrorMessage(messageText);
         pushToast("error", messageText);
         setResponse(null);
+        if (action === "import1") {
+          setImportSubmitStatus("idle");
+          clearImportSubmitReset();
+        }
       } finally {
         setLoadingAction(null);
       }
@@ -3152,6 +3211,7 @@ export default function Rolodex() {
     [
       csvFileContent,
       csvFileName,
+      clearImportSubmitReset,
       contactId,
       importResults,
       importSelection,
@@ -3311,6 +3371,7 @@ export default function Rolodex() {
 
   const viewColumns = useMemo(
     () => [
+      { id: "local_id", label: "Local ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3324,6 +3385,7 @@ export default function Rolodex() {
 
   const emailColumns = useMemo(
     () => [
+      { id: "local_id", label: "Local ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3354,12 +3416,6 @@ export default function Rolodex() {
     const records = Array.isArray(response) ? response : [response];
     return records.filter((record) => record && typeof record === "object");
   }, [lastAction, response]);
-
-  const showJsonResponse =
-    lastAction &&
-    lastAction === activePage &&
-    lastAction !== "view" &&
-    response;
 
   const sampleViewRecord = useMemo(() => ({ ...SAMPLE_CONTACT_RECORD }), []);
 
@@ -3396,6 +3452,9 @@ export default function Rolodex() {
     }
     return resolvedViewRecords.filter((record) => {
       const values = [
+        record.local_id ?? record.localId ?? null,
+        record.contact_id ?? record.contactId ?? null,
+        resolveContactId(record),
         resolveContactName(record),
         record.full_name ?? record.fullName ?? record.name,
         record.title,
@@ -3421,6 +3480,7 @@ export default function Rolodex() {
     });
   }, [
     computeEngagementStatus,
+    resolveContactId,
     resolveContactName,
     resolvedViewRecords,
     viewSearchTerm,
@@ -3439,6 +3499,15 @@ export default function Rolodex() {
 
     const getSortValue = (record) => {
       switch (viewSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
         case "full_name":
           return (
             record.full_name ??
@@ -3522,6 +3591,7 @@ export default function Rolodex() {
     };
   }, [
     computeEngagementStatus,
+    resolveContactId,
     viewFilteredRecords,
     viewPageIndex,
     viewPageSize,
@@ -3647,14 +3717,14 @@ export default function Rolodex() {
           {showContactIdField && (
             <div className={`field${contactHighlight ? " error" : ""}`}>
               <label className="field-label" htmlFor="contactId">
-                Contact ID
+                Local ID
               </label>
               <input
                 id="contactId"
                 className="text-input"
                 value={contactId}
                 onChange={(event) => setContactId(event.target.value)}
-                placeholder="Contact ID"
+                placeholder="Local ID"
                 autoComplete="off"
               />
               {contactId.trim() && (
@@ -3662,14 +3732,14 @@ export default function Rolodex() {
                   type="button"
                   className="copy-button"
                   onClick={handleCopyContactId}
-                  aria-label="Copy contact ID"
+                  aria-label="Copy local ID"
                 >
                   <IconCopy />
                 </button>
               )}
               <div className={`helper-text${contactHighlight ? " error" : ""}`}>
                 {contactHighlight
-                  ? "Contact ID is required to update."
+                  ? "Local ID is required to update."
                   : "Needed when updating a contact."}
               </div>
             </div>
@@ -3998,10 +4068,16 @@ export default function Rolodex() {
                           disabled={disableSubmit || importSelectionCount === 0}
                           aria-busy={loadingAction === "import1"}
                         >
-                          {loadingAction === "import1" ? <IconLoader /> : null}
+                          {loadingAction === "import1" ? (
+                            <IconLoader />
+                          ) : importSubmitStatus === "saved" ? (
+                            <IconCheck className="button-icon" />
+                          ) : null}
                           {loadingAction === "import1"
-                            ? "Importing…"
-                            : "Send Selected"}
+                            ? "Saving…"
+                            : importSubmitStatus === "saved"
+                              ? "Saved"
+                              : "Save Selected"}
                         </button>
                       </div>
                     </div>
@@ -4160,6 +4236,7 @@ export default function Rolodex() {
                                 key={column.id}
                                 scope="col"
                                 aria-sort={ariaSort}
+                                className={column.id === "local_id" ? "id-column" : ""}
                               >
                                 <button
                                   type="button"
@@ -4200,6 +4277,15 @@ export default function Rolodex() {
                               return null;
                             }
                             const normalizedId = String(id);
+                            const localIdValue =
+                              contact.local_id ??
+                              contact.localId ??
+                              contact.contact_id ??
+                              contact.contactId ??
+                              normalizedId;
+                            const localIdDisplay = localIdValue
+                              ? String(localIdValue)
+                              : "—";
                             const isSelected =
                               emailRecipients.includes(normalizedId);
                             const profileLink = formatProfileHref(
@@ -4239,6 +4325,7 @@ export default function Rolodex() {
                                     <span className="select-indicator" />
                                   </button>
                                 </td>
+                                <td className="id-cell">{localIdDisplay}</td>
                                 <td>{resolveContactName(contact) || "—"}</td>
                                 <td>{contact.title ?? "—"}</td>
                                 <td>{contact.company ?? "—"}</td>
@@ -5071,7 +5158,12 @@ export default function Rolodex() {
                             : "descending"
                           : "none";
                         return (
-                          <th key={column.id} scope="col" aria-sort={ariaSort}>
+                          <th
+                            key={column.id}
+                            scope="col"
+                            aria-sort={ariaSort}
+                            className={column.id === "local_id" ? "id-column" : ""}
+                          >
                             <button
                               type="button"
                               className={`sort-button${
@@ -5110,6 +5202,15 @@ export default function Rolodex() {
                       viewVisibleRecords.map((record, index) => {
                         const contactIdValue = resolveContactId(record);
                         const key = contactIdValue || index;
+                        const localIdValue =
+                          record.local_id ??
+                          record.localId ??
+                          record.contact_id ??
+                          record.contactId ??
+                          contactIdValue;
+                        const localIdDisplay = localIdValue
+                          ? String(localIdValue)
+                          : "—";
                         const profileLink = formatProfileHref(
                           record.profile_url ?? record.profileUrl,
                         );
@@ -5122,6 +5223,7 @@ export default function Rolodex() {
                         );
                         return (
                           <tr key={key}>
+                            <td className="id-cell">{localIdDisplay}</td>
                             <td>{record.full_name ?? record.fullName ?? "—"}</td>
                             <td>{record.title ?? "—"}</td>
                             <td>{record.company ?? "—"}</td>
@@ -5216,11 +5318,6 @@ export default function Rolodex() {
             </div>
           )}
 
-          {showJsonResponse && (
-            <pre className="response-view" aria-live="polite">
-              {JSON.stringify(response, null, 2)}
-            </pre>
-          )}
         </div>
 
         <footer className="rolodex-legal" aria-label="Legal">

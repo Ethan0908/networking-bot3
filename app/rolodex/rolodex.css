@@ -494,7 +494,7 @@ html.theme-dark {
 }
 
 .import-table {
-  min-width: 760px;
+  min-width: 960px;
 }
 
 .import-table-input {
@@ -560,8 +560,8 @@ html.theme-dark {
   margin-top: 4px;
 }
 
-.recipient-table {  
-  min-width: 760px;
+.recipient-table {
+  min-width: 960px;
 }
 
 .table-section {
@@ -1478,6 +1478,11 @@ html.theme-dark {
   box-shadow: 0 12px 28px -16px rgba(37, 99, 235, 0.9);
 }
 
+.button .button-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .button.secondary {
   background: rgba(148, 163, 184, 0.16);
   color: var(--text-primary);
@@ -1643,7 +1648,7 @@ html.theme-dark {
 .view-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 720px;
+  min-width: 960px;
 }
 
 .view-table caption {
@@ -1656,7 +1661,7 @@ html.theme-dark {
 
 .view-table th,
 .view-table td {
-  padding: 12px 16px;
+  padding: 14px 22px;
   text-align: left;
   border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   color: var(--text-primary);
@@ -1682,6 +1687,19 @@ html.theme-dark {
 .view-table a:focus-visible {
   text-decoration: underline;
   outline: none;
+}
+
+.view-table .id-column,
+.recipient-table .id-column {
+  width: 140px;
+  white-space: nowrap;
+}
+
+.view-table .id-cell,
+.recipient-table .id-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
 }
 
 .engagement-cell {
@@ -1756,17 +1774,6 @@ html.theme-dark {
 
 .rolodex-legal-divider {
   color: inherit;
-}
-
-pre.response-view {
-  margin: 0;
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--response-background);
-  color: var(--response-text);
-  max-height: 320px;
-  overflow: auto;
-  font-size: 0.85rem;
 }
 
 @media (max-width: 640px) {
