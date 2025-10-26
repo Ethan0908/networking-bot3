@@ -777,7 +777,7 @@ export default function Rolodex() {
   const [importSelection, setImportSelection] = useState([]);
   const [importSubmitStatus, setImportSubmitStatus] = useState("idle");
   const [importSort, setImportSort] = useState({
-    key: "full_name",
+    key: "local_id",
     direction: "asc",
   });
   const [importPageSize, setImportPageSize] = useState(5);
@@ -785,12 +785,12 @@ export default function Rolodex() {
   const [viewPageSize, setViewPageSize] = useState(5);
   const [viewPageIndex, setViewPageIndex] = useState(0);
   const [viewSort, setViewSort] = useState({
-    key: "full_name",
+    key: "local_id",
     direction: "asc",
   });
   const [emailPageSize, setEmailPageSize] = useState(5);
   const [emailPageIndex, setEmailPageIndex] = useState(0);
-  const [emailSort, setEmailSort] = useState({ key: "full_name", direction: "asc" });
+  const [emailSort, setEmailSort] = useState({ key: "local_id", direction: "asc" });
   const [viewSearchTerm, setViewSearchTerm] = useState("");
   const [emailSearchTerm, setEmailSearchTerm] = useState("");
   const [toChips, setToChips] = useState(() => [...DEFAULT_TEMPLATE.to]);
@@ -1366,6 +1366,13 @@ export default function Rolodex() {
               contactIdValue ||
               baseRecord.contact_id ||
               baseRecord.contactId ||
+              "",
+            local_id:
+              baseRecord.local_id ??
+              baseRecord.localId ??
+              contactIdValue ??
+              baseRecord.contact_id ??
+              baseRecord.contactId ??
               "",
             full_name:
               baseRecord.full_name ??
@@ -1943,6 +1950,15 @@ export default function Rolodex() {
 
     const getSortValue = (record) => {
       switch (importSort.key) {
+        case "local_id":
+          return (
+            record.local_id ??
+            record.localId ??
+            record.contact_id ??
+            record.contactId ??
+            record.id ??
+            ""
+          );
         case "full_name":
           return record.full_name ?? record.fullName ?? record.name ?? "";
         case "title":
@@ -3399,6 +3415,7 @@ export default function Rolodex() {
 
   const importColumns = useMemo(
     () => [
+      { id: "local_id", label: "Local ID" },
       { id: "full_name", label: "Full Name" },
       { id: "title", label: "Title" },
       { id: "company", label: "Company" },
@@ -3792,46 +3809,50 @@ export default function Rolodex() {
           {activePage === "import" && (
             <div role="tabpanel" id="import-panel" aria-labelledby="import-tab">
               <form className="import-form" onSubmit={handleSubmit} noValidate>
-                <div className="import-card">
-                  <div className="field">
-                    <label className="field-label" htmlFor="csvFile">
-                      Import contacts from CSV
+                <div className="import-upload">
+                  <label className="field-label" htmlFor="csvFile">
+                    Import contacts from CSV
+                  </label>
+                  <p className="helper-text">
+                    Upload a CSV file to add multiple contacts at once.
+                  </p>
+                  <div className="import-upload-row">
+                    <label
+                      htmlFor="csvFile"
+                      className="button secondary import-upload-button"
+                    >
+                      Upload file
                     </label>
-                    <p className="helper-text">
-                      Upload a CSV file to add multiple contacts at once.
-                    </p>
-                    <input
-                      key={csvFileInputKey}
-                      id="csvFile"
-                      type="file"
-                      accept=".csv,text/csv"
-                      className="file-input"
-                      onChange={handleCsvFileChange}
-                      disabled={disableSubmit}
-                    />
-                    {csvFileName ? (
-                      <p className="selected-file">Selected file: {csvFileName}</p>
-                    ) : null}
-                    <div
-                      className={`validation-text${
-                        csvImportError ? " error" : ""
-                      }`}
+                    <span
+                      className={`import-file-name${csvFileName ? "" : " empty"}`}
                     >
-                      {csvImportError}
-                    </div>
+                      {csvFileName || "No file selected"}
+                    </span>
                   </div>
-                  <div className="action-row">
-                    <button
-                      type="submit"
-                      value="import"
-                      className="button"
-                      disabled={disableSubmit}
-                      aria-busy={loadingAction === "import"}
-                    >
-                      {loadingAction === "import" ? <IconLoader /> : null}
-                      {loadingAction === "import" ? "Importing…" : "Import CSV"}
-                    </button>
-                  </div>
+                  <input
+                    key={csvFileInputKey}
+                    id="csvFile"
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="file-input visually-hidden"
+                    onChange={handleCsvFileChange}
+                    disabled={disableSubmit}
+                  />
+                  {csvImportError ? (
+                    <div className="validation-text error">{csvImportError}</div>
+                  ) : null}
+                </div>
+                <div className="action-row import-submit-row">
+                  <button
+                    type="submit"
+                    value="import"
+                    className="button"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "import"}
+                  >
+                    {loadingAction === "import" ? <IconLoader /> : null}
+                    {loadingAction === "import" ? "Importing…" : "Import CSV"}
+                  </button>
                 </div>
               </form>
 
@@ -3896,7 +3917,14 @@ export default function Rolodex() {
                                   : "descending"
                                 : "none";
                               return (
-                                <th key={column.id} scope="col" aria-sort={ariaSort}>
+                                <th
+                                  key={column.id}
+                                  scope="col"
+                                  aria-sort={ariaSort}
+                                  className={
+                                    column.id === "local_id" ? "id-column" : undefined
+                                  }
+                                >
                                   <button
                                     type="button"
                                     className={`sort-button${
@@ -3976,9 +4004,11 @@ export default function Rolodex() {
                                     const isEditable = IMPORT_EDITABLE_FIELDS.has(
                                       column.id,
                                     );
+                                    const cellClassName =
+                                      column.id === "local_id" ? "id-cell" : undefined;
                                     if (!isEditable) {
                                       return (
-                                        <td key={column.id}>
+                                        <td key={column.id} className={cellClassName}>
                                           {value ? value : "—"}
                                         </td>
                                       );
@@ -4859,9 +4889,9 @@ export default function Rolodex() {
                         </table>
                       </div>
                     ) : rewriteResponse ? (
-                      <pre className="preview-body-pre preview-response-raw">
-                        {rewriteResponseJson}
-                      </pre>
+                      <div className="preview-response-empty">
+                        No formatted responses available yet.
+                      </div>
                     ) : null}
                   </div>
                 )}
