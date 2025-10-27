@@ -12,41 +12,38 @@ async function getLandingPageSource() {
   return readFile(landingPath, "utf8");
 }
 
-test("landing page highlights LinkUp hero copy", async () => {
+test("landing page contains Linkmation hero copy", async () => {
   const source = await getLandingPageSource();
   assert.ok(
-    source.includes("Turn every campus connection into career momentum"),
-    "expected the hero headline to describe LinkUp's promise"
+    source.includes("Automate and manage your links with ease."),
+    "expected the hero headline to describe Linkmation's value"
   );
   assert.ok(
-    source.includes("Get started"),
-    "expected a primary call-to-action for starting"
+    source.includes("Try Linkmation Free"),
+    "expected a primary call-to-action for trying Linkmation"
   );
 });
 
-test("landing page lists core networking features", async () => {
+test("landing page lists core Linkmation features", async () => {
   const source = await getLandingPageSource();
   [
-    "Import every contact in minutes",
-    "Organize connections effortlessly",
-    "AI-assisted outreach",
-    "Conversation tracking",
+    "Automated Link Management",
+    "Real-Time Analytics",
+    "Smart Integrations",
+    "Privacy First",
   ].forEach((feature) => {
-    assert.ok(
-      source.includes(feature),
-      `expected to find feature copy for "${feature}"`
-    );
+    assert.ok(source.includes(feature), `expected feature card copy for "${feature}"`);
   });
 });
 
-test("landing page explains data practices", async () => {
+test("landing page explains Google data usage", async () => {
   const source = await getLandingPageSource();
-  [
-    "Gmail metadata only",
-    "Selective Drive imports",
-    "Your profile, your control",
-    "Secure processing",
-  ].forEach((item) => {
-    assert.ok(source.includes(item), `expected privacy section item: ${item}`);
-  });
+  assert.ok(
+    source.includes("Linkmation uses Google user data only to identify your account"),
+    "expected explanation of limited Google data usage"
+  );
+  assert.ok(
+    source.includes("View our Privacy Policy"),
+    "expected privacy policy link copy"
+  );
 });

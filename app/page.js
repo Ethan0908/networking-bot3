@@ -1,243 +1,228 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "LinkUp | Student Networking & Career Readiness",
+  title: "Linkmation | Automate and manage your links",
   description:
-    "LinkUp helps university students discover relevant professional contacts, organize their network, and send AI-personalized outreach messages.",
+    "Linkmation helps you organize, automate, and track links with verified Google data practices and a streamlined dashboard.",
 };
 
-const coreFeatures = [
+const features = [
   {
-    title: "Import every contact in minutes",
+    title: "Automated Link Management",
     description:
-      "Pull people in from Gmail, spreadsheets, campus directories, or uploaded files. LinkUp automatically extracts names, roles, and verified email details so your list is always current.",
+      "Create, edit, and organize every link from one dashboard with workflows that update in real time.",
   },
   {
-    title: "Organize connections effortlessly",
+    title: "Real-Time Analytics",
     description:
-      "Clean messy data with smart deduplication, group contacts by school, industry, or priority, and keep everyone searchable in one secure workspace.",
+      "Monitor clicks, engagement, and traffic sources across every platform at a glance.",
   },
   {
-    title: "AI-assisted outreach",
+    title: "Smart Integrations",
     description:
-      "Generate tailored introductions, follow-up nudges, and thank-you notes that sound like you. Keep templates for coffee chats, internship asks, and career fairs ready to go.",
+      "Connect Linkmation to the tools you already rely on—scheduling updates takes seconds.",
   },
   {
-    title: "Conversation tracking",
+    title: "Privacy First",
     description:
-      "See every message you have sent, what is awaiting a reply, and reminders for the next touchpoint so no opportunity slips by.",
-  },
-];
-
-const optionalEnhancements = [
-  {
-    title: "Verified alumni spotlights",
-    description:
-      "Browse curated lists of graduates who opted in to help current students, complete with shared majors, clubs, and interests.",
-  },
-  {
-    title: "Connection scoring",
-    description:
-      "Focus on the people most likely to respond with AI-powered prioritization based on mutual connections, response history, and company hiring trends.",
-  },
-  {
-    title: "Job-network analytics",
-    description:
-      "Track how outreach converts to conversations, referrals, and offers so you can double down on what is working.",
+      "We only collect the data required to deliver automations and protect your account.",
   },
 ];
 
-const workflowSteps = [
+const howItWorks = [
   {
-    title: "Connect your sources",
-    description:
-      "Securely link Gmail or drop in spreadsheets and CSVs. Import only what you choose—nothing moves without your approval.",
+    title: "Sign in with Google",
+    description: "Verify your account securely to sync existing links instantly.",
   },
   {
-    title: "LinkUp cleans and enriches",
-    description:
-      "We normalize names, roles, and companies, flag duplicates, and organize contacts into smart segments tailored to your goals.",
+    title: "Set up automations",
+    description: "Build link workflows that update, tag, and route traffic without manual work.",
   },
   {
-    title: "Reach out with confidence",
-    description:
-      "Use AI-generated summaries and email templates to craft intros, follow-ups, and thank-yous that feel authentic and timely.",
-  },
-  {
-    title: "Manage every relationship",
-    description:
-      "Track replies, set reminders, and log notes so you always know where each conversation stands.",
-  },
-];
-
-const dataPractices = [
-  {
-    title: "Gmail metadata only",
-    description:
-      "With your consent we read sender and recipient fields to build contact cards—never message bodies or attachments.",
-  },
-  {
-    title: "Selective Drive imports",
-    description:
-      "Choose the spreadsheets or CSVs you want to upload from Drive. LinkUp ignores everything else.",
-  },
-  {
-    title: "Your profile, your control",
-    description:
-      "We use your name and email to personalize the workspace. Disconnect access or delete data at any time from settings.",
-  },
-  {
-    title: "Secure processing",
-    description:
-      "Data stays encrypted in transit and at rest. We follow FERPA-aligned safeguards and never sell or share your information.",
+    title: "Track performance",
+    description: "Review analytics and tune campaigns using clear, actionable insights.",
   },
 ];
 
 export default function HomePage() {
   return (
-    <main className="landing" aria-labelledby="landing-title">
-      <section className="hero">
-        <div className="hero-content">
-          <p className="hero-tag">Student networking made simple</p>
-          <h1 id="landing-title">Turn every campus connection into career momentum</h1>
-          <p className="hero-lead">
-            LinkUp is the student networking and career-readiness platform that helps you
-            discover relevant professional contacts, organize your relationships, and send
-            AI-personalized outreach in seconds.
-          </p>
-          <div className="hero-actions">
-            <Link className="primary-cta" href="/rolodex">
-              Get started
-            </Link>
-            <a className="secondary-cta" href="#how-it-works">
-              See how it works
-            </a>
-          </div>
-          <ul className="hero-highlights">
-            <li>Automated contact discovery from the tools you already use</li>
-            <li>Smart organization and reminders for every conversation</li>
-            <li>AI-crafted introductions and follow-ups that sound like you</li>
+    <>
+      <header className="lm-header">
+        <nav className="lm-nav" aria-label="Main">
+          <Link href="/" className="lm-logo" aria-label="Linkmation home">
+            <span aria-hidden="true" className="lm-logo-icon">
+              ⛓️
+            </span>
+            <span className="lm-logo-wordmark">Linkmation</span>
+          </Link>
+          <ul className="lm-nav-links">
+            <li>
+              <a href="#hero">Home</a>
+            </li>
+            <li>
+              <a href="#features">Features</a>
+            </li>
+            <li>
+              <a href="#how-it-works">How it Works</a>
+            </li>
+            <li>
+              <a href="https://linkmation.me/privacy" target="_blank" rel="noreferrer">
+                Privacy
+              </a>
+            </li>
+            <li>
+              <a href="https://linkmation.me/terms" target="_blank" rel="noreferrer">
+                Terms
+              </a>
+            </li>
           </ul>
-        </div>
-        <div className="hero-visual" role="img" aria-label="Students collaborating on networking opportunities">
-          <div className="hero-visual-glow" />
-          <div className="hero-card">
-            <p className="hero-card-label">Today&apos;s plan</p>
-            <ul>
-              <li>
-                <span className="hero-card-step">1</span>
-                <div>
-                  <p className="hero-card-title">Import coffee chat emails</p>
-                  <p className="hero-card-subtitle">Highlight new contacts from Gmail</p>
-                </div>
-              </li>
-              <li>
-                <span className="hero-card-step">2</span>
-                <div>
-                  <p className="hero-card-title">Send alumni intros</p>
-                  <p className="hero-card-subtitle">Use AI templates tailored to your major</p>
-                </div>
-              </li>
-              <li>
-                <span className="hero-card-step">3</span>
-                <div>
-                  <p className="hero-card-title">Track follow-ups</p>
-                  <p className="hero-card-subtitle">Set reminders for next conversations</p>
-                </div>
-              </li>
+          <Link className="lm-nav-cta" href="/app">
+            Get Started
+          </Link>
+        </nav>
+      </header>
+
+      <main className="lm-main">
+        <section id="hero" className="lm-hero" aria-labelledby="hero-title">
+          <div className="lm-hero-copy">
+            <h1 id="hero-title">Automate and manage your links with ease.</h1>
+            <p>
+              Linkmation helps you organize, automate, and track all your links from one intuitive dashboard so you can launch
+              campaigns faster and stay confident in your analytics.
+            </p>
+            <div className="lm-hero-actions">
+              <Link className="lm-button lm-button-primary" href="/app">
+                Try Linkmation Free
+              </Link>
+              <a className="lm-button lm-button-outline" href="#features">
+                Learn More
+              </a>
+            </div>
+            <ul className="lm-hero-highlights">
+              <li>Unified dashboard for every link you manage</li>
+              <li>Analytics that update in real time</li>
+              <li>Automations that keep your workflows current</li>
             </ul>
           </div>
-        </div>
-      </section>
+          <div className="lm-hero-visual" role="img" aria-label="Linkmation dashboard preview with analytics and automations">
+            <div className="lm-hero-card">
+              <header>
+                <span className="lm-hero-card-title">Campaign Overview</span>
+                <span className="lm-hero-status">Live</span>
+              </header>
+              <dl>
+                <div>
+                  <dt>Active Links</dt>
+                  <dd>128</dd>
+                </div>
+                <div>
+                  <dt>24h Clicks</dt>
+                  <dd>14,502</dd>
+                </div>
+                <div>
+                  <dt>Automation Runs</dt>
+                  <dd>342</dd>
+                </div>
+              </dl>
+              <footer>
+                <p>Next workflow triggers in 2 minutes</p>
+              </footer>
+            </div>
+          </div>
+        </section>
 
-      <section className="section" aria-labelledby="features-heading">
-        <div className="section-header">
-          <h2 id="features-heading">Everything you need to grow your network</h2>
-          <p>
-            LinkUp automates the busywork of outreach so you can focus on building genuine
-            connections with mentors, alumni, and hiring managers.
-          </p>
-        </div>
-        <div className="feature-grid" role="list">
-          {coreFeatures.map((feature) => (
-            <article className="feature-card" role="listitem" key={feature.title}>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <section id="features" className="lm-section" aria-labelledby="features-title">
+          <div className="lm-section-heading">
+            <h2 id="features-title">Built for high-performing link teams</h2>
+            <p>Everything you need to automate, monitor, and optimize your links without lifting a finger.</p>
+          </div>
+          <div className="lm-card-grid">
+            {features.map((feature) => (
+              <article key={feature.title} className="lm-card" aria-label={feature.title}>
+                <h3>{feature.title}</h3>
+                <p>{feature.description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-      <section className="section" aria-labelledby="enhancements-heading">
-        <div className="section-header">
-          <h2 id="enhancements-heading">Optional boosts when you need them</h2>
-          <p>Unlock advanced insights to supercharge your outreach strategy.</p>
-        </div>
-        <div className="feature-grid" role="list">
-          {optionalEnhancements.map((feature) => (
-            <article className="feature-card optional" role="listitem" key={feature.title}>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <section id="privacy" className="lm-section lm-privacy" aria-labelledby="privacy-title">
+          <div className="lm-section-heading">
+            <h2 id="privacy-title">Data transparency you can trust</h2>
+            <p>
+              Linkmation uses Google user data only to identify your account, sync your links, and keep automations running
+              smoothly. We never sell or share your information.
+            </p>
+          </div>
+          <div className="lm-privacy-details">
+            <p>
+              Your Google profile (name and email) establishes your workspace. When you connect Google Drive or Sheets, we only
+              read the files you select for import. Linkmation does not store message content—just the metadata required to make
+              your links work. Disconnect access or delete your data whenever you choose.
+            </p>
+            <a className="lm-inline-link" href="https://linkmation.me/privacy" target="_blank" rel="noreferrer">
+              View our Privacy Policy
+            </a>
+          </div>
+        </section>
 
-      <section className="section" id="how-it-works" aria-labelledby="workflow-heading">
-        <div className="section-header">
-          <h2 id="workflow-heading">How LinkUp works</h2>
-          <p>
-            A guided workflow keeps you organized from first introduction to final follow-up.
-          </p>
-        </div>
-        <ol className="workflow-steps">
-          {workflowSteps.map((step, index) => (
-            <li key={step.title}>
-              <div className="workflow-step-number">{index + 1}</div>
-              <div>
-                <h3>{step.title}</h3>
-                <p>{step.description}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
+        <section id="how-it-works" className="lm-section" aria-labelledby="how-title">
+          <div className="lm-section-heading">
+            <h2 id="how-title">How it works</h2>
+            <p>Three simple steps to automate your links and monitor performance like a pro.</p>
+          </div>
+          <ol className="lm-steps">
+            {howItWorks.map((step, index) => (
+              <li key={step.title}>
+                <div className="lm-step-index" aria-hidden="true">
+                  {index + 1}
+                </div>
+                <div>
+                  <h3>{step.title}</h3>
+                  <p>{step.description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
 
-      <section className="section privacy" aria-labelledby="privacy-heading">
-        <div className="section-header">
-          <h2 id="privacy-heading">Why we ask for limited access</h2>
-          <p>
-            LinkUp only requests the minimum data required to keep your contacts accurate and
-            your outreach personal. You stay in control at every step.
-          </p>
-        </div>
-        <div className="privacy-grid" role="list">
-          {dataPractices.map((item) => (
-            <article className="privacy-card" role="listitem" key={item.title}>
-              <h3>{item.title}</h3>
-              <p>{item.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+        <section className="lm-section" aria-labelledby="testimonial-title">
+          <div className="lm-section-heading">
+            <h2 id="testimonial-title">Loved by teams that ship fast</h2>
+            <p>Hear from early adopters using Linkmation to power client campaigns.</p>
+          </div>
+          <figure className="lm-testimonial">
+            <blockquote>
+              “Linkmation saved us hours every week managing client links. Automations keep everything current while analytics
+              show exactly where to optimize.”
+            </blockquote>
+            <figcaption>
+              — Beta user, Toronto
+            </figcaption>
+          </figure>
+        </section>
+      </main>
 
-      <section className="section final-cta" aria-labelledby="cta-heading">
-        <div className="section-header">
-          <h2 id="cta-heading">Start building your professional community today</h2>
-          <p>
-            Join LinkUp to discover new contacts, organize your outreach, and make every
-            conversation count.
-          </p>
-        </div>
-        <div className="hero-actions">
-          <Link className="primary-cta" href="/rolodex">
-            Explore the workspace
+      <footer className="lm-footer">
+        <div className="lm-footer-inner">
+          <Link href="/" className="lm-logo" aria-label="Linkmation home">
+            <span aria-hidden="true" className="lm-logo-icon">
+              ⛓️
+            </span>
+            <span className="lm-logo-wordmark">Linkmation</span>
           </Link>
-          <a className="secondary-cta" href="mailto:hello@linkup.network">
-            Talk to our team
-          </a>
+          <div className="lm-footer-links">
+            <a href="https://linkmation.me/privacy" target="_blank" rel="noreferrer">
+              Privacy Policy
+            </a>
+            <a href="https://linkmation.me/terms" target="_blank" rel="noreferrer">
+              Terms of Service
+            </a>
+            <a href="mailto:support@linkmation.me">support@linkmation.me</a>
+          </div>
+          <p className="lm-footer-copy">© 2025 Linkmation. All rights reserved. Proudly built in Canada.</p>
         </div>
-      </section>
-    </main>
+      </footer>
+    </>
   );
 }
