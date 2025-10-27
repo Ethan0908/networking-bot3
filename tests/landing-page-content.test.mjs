@@ -19,6 +19,10 @@ test("landing page contains Linkmation hero copy", async () => {
     "expected the hero headline to describe Linkmation's value"
   );
   assert.ok(
+    source.includes("automate your emailing and networking"),
+    "expected the hero copy to reference automating emailing and networking"
+  );
+  assert.ok(
     source.includes("Try Linkmation Free"),
     "expected a primary call-to-action for trying Linkmation"
   );

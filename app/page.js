@@ -76,7 +76,7 @@ export default function HomePage() {
               </a>
             </li>
           </ul>
-          <Link className="lm-nav-cta" href="/app">
+          <Link className="lm-nav-cta" href="/rolodex">
             Get Started
           </Link>
         </nav>
@@ -88,10 +88,10 @@ export default function HomePage() {
             <h1 id="hero-title">Automate and manage your links with ease.</h1>
             <p>
               Linkmation helps you organize, automate, and track all your links from one intuitive dashboard so you can launch
-              campaigns faster and stay confident in your analytics.
+              campaigns faster, automate your emailing and networking, and stay confident in your analytics.
             </p>
             <div className="lm-hero-actions">
-              <Link className="lm-button lm-button-primary" href="/app">
+              <Link className="lm-button lm-button-primary" href="/rolodex">
                 Try Linkmation Free
               </Link>
               <a className="lm-button lm-button-outline" href="#features">
