@@ -1,5 +1,3 @@
 {
-  "rewrites": [
-    { "source": "/api/rolodex", "destination": "/api/jobs/rolodex" }
-  ]
+  "rewrites": []
 }
