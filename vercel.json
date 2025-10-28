@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/api/rolodex", "destination": "/api/jobs/rolodex", "permanent": false }
+  ]
+}
