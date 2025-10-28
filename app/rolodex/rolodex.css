@@ -589,12 +589,6 @@ html.theme-dark {
   gap: 12px;
 }
 
-.import-upload-caption {
-  margin: 0;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .import-upload-button {
   cursor: pointer;
 }
@@ -606,10 +600,6 @@ html.theme-dark {
 
 .import-file-name.empty {
   opacity: 0.7;
-}
-
-.import-submit-row {
-  margin-top: 4px;
 }
 
 .recipient-table-scroll {

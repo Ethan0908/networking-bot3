@@ -3833,10 +3833,6 @@ export default function Rolodex() {
                       {csvFileName || "No file selected"}
                     </span>
                   </div>
-                  <p className="import-upload-caption">Import contacts from CSV</p>
-                  <p className="helper-text">
-                    Upload a CSV file to add multiple contacts at once.
-                  </p>
                   <input
                     key={csvFileInputKey}
                     id="csvFile"
@@ -3849,12 +3845,10 @@ export default function Rolodex() {
                   {csvImportError ? (
                     <div className="validation-text error">{csvImportError}</div>
                   ) : null}
-                </div>
-                <div className="action-row import-submit-row">
                   <button
                     type="submit"
                     value="import"
-                    className="button"
+                    className="button import-submit-button"
                     disabled={disableSubmit}
                     aria-busy={loadingAction === "import"}
                   >
