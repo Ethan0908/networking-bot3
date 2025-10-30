@@ -3809,12 +3809,17 @@ export default function Rolodex() {
             <div role="tabpanel" id="import-panel" aria-labelledby="import-tab">
               <form className="import-form" onSubmit={handleSubmit} noValidate>
                 <div className="import-upload">
-                  <label className="field-label" htmlFor="csvFile">
+                  <a
+                    className="import-template-link"
+                    href="https://docs.google.com/spreadsheets/d/1iFe6NYrKnqADewiw4mERZ_Az2xbj3pr9nbkNVFFUaeg/copy"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download CSV template
+                  </a>
+                  <label className="visually-hidden" htmlFor="csvFile">
                     Import contacts from CSV
                   </label>
-                  <p className="helper-text">
-                    Upload a CSV file to add multiple contacts at once.
-                  </p>
                   <div className="import-upload-row">
                     <label
                       htmlFor="csvFile"
@@ -3840,12 +3845,10 @@ export default function Rolodex() {
                   {csvImportError ? (
                     <div className="validation-text error">{csvImportError}</div>
                   ) : null}
-                </div>
-                <div className="action-row import-submit-row">
                   <button
                     type="submit"
                     value="import"
-                    className="button"
+                    className="button import-submit-button"
                     disabled={disableSubmit}
                     aria-busy={loadingAction === "import"}
                   >
