@@ -206,9 +206,13 @@ export default function HomePage() {
       <footer className="lm-footer">
         <div className="lm-footer-inner">
           <Link href="/" className="lm-logo" aria-label="Linkmation home">
-            <span aria-hidden="true" className="lm-logo-icon">
-              ⛓️
-            </span>
+            <Image
+              src="/linkmation-logo.svg"
+              alt=""
+              width={40}
+              height={40}
+              className="lm-logo-icon"
+            />
             <span className="lm-logo-wordmark">Linkmation</span>
           </Link>
           <div className="lm-footer-links">
