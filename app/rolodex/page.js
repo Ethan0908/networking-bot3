@@ -3420,10 +3420,10 @@ export default function Rolodex() {
 
   const tabs = [
     { id: "create", label: "Create" },
+    { id: "search", label: "Search" },
     { id: "import", label: "Import" },
     { id: "view", label: "View" },
     { id: "update", label: "Update" },
-    { id: "search", label: "Search" },
     { id: "email", label: "Email" },
     { id: "cover", label: "Cover letter" },
   ];
@@ -3714,11 +3714,8 @@ export default function Rolodex() {
   return (
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
-      <section className="rolodex-card" aria-labelledby="contacts-heading">
-        <header className="rolodex-header">
-          <div className="rolodex-heading">
-            <h1 id="contacts-heading">Contact Manager</h1>
-          </div>
+      <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
+        <header className="rolodex-header no-heading">
           <div className="header-actions">
             <button
               type="button"

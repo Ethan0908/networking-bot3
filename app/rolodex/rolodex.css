@@ -107,6 +107,11 @@ html.theme-dark {
   position: relative;
 }
 
+.rolodex-card--no-heading {
+  padding-top: 24px;
+  gap: 16px;
+}
+
 @media (max-width: 768px) {
   .rolodex-page {
     padding: 32px 16px 48px;
@@ -125,6 +130,11 @@ html.theme-dark {
   gap: 16px;
   width: 100%;
   flex-wrap: wrap;
+}
+
+.rolodex-header.no-heading {
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 
 .theme-toggle {
