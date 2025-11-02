@@ -329,6 +329,26 @@ html.theme-dark {
   }
 }
 
+.field-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.field-input-row .text-input {
+  flex: 1 1 auto;
+}
+
+.field-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-inline-actions .button {
+  white-space: nowrap;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
