@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 
 export const metadata = {
@@ -51,14 +50,9 @@ export default function HomePage() {
       <header className="lm-header">
         <nav className="lm-nav" aria-label="Main">
           <Link href="/" className="lm-logo" aria-label="Linkmation home">
-            <Image
-              src="/linkmation-logo.svg"
-              alt=""
-              width={40}
-              height={40}
-              priority
-              className="lm-logo-icon"
-            />
+            <span aria-hidden="true" className="lm-logo-icon">
+              ⛓️
+            </span>
             <span className="lm-logo-wordmark">Linkmation</span>
           </Link>
           <ul className="lm-nav-links">
@@ -91,10 +85,10 @@ export default function HomePage() {
       <main className="lm-main">
         <section id="hero" className="lm-hero" aria-labelledby="hero-title">
           <div className="lm-hero-copy">
-            <h1 id="hero-title">Automate your networking and email campaigns.</h1>
+            <h1 id="hero-title">Automate and manage your links with ease.</h1>
             <p>
-              Linkmation keeps every outreach workflow on autopilot—from managing the links that power your funnels to sending
-              smarter follow-ups—so your networking and email campaigns stay warm without manual effort.
+              Linkmation helps you organize, automate, and track all your links from one intuitive dashboard so you can launch
+              campaigns faster, automate your emailing and networking, and stay confident in your analytics.
             </p>
             <div className="lm-hero-actions">
               <Link className="lm-button lm-button-primary" href="/rolodex">

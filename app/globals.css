@@ -76,11 +76,7 @@ footer {
 }
 
 .lm-logo-icon {
-  width: 2.5rem;
-  height: 2.5rem;
-  display: block;
-  border-radius: 0.75rem;
-  box-shadow: 0 4px 10px rgba(18, 39, 68, 0.1);
+  font-size: 1.4rem;
 }
 
 .lm-nav-links {

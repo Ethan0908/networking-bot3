@@ -15,12 +15,12 @@ async function getLandingPageSource() {
 test("landing page contains Linkmation hero copy", async () => {
   const source = await getLandingPageSource();
   assert.ok(
-    source.includes("Automate your networking and email campaigns."),
+    source.includes("Automate and manage your links with ease."),
     "expected the hero headline to describe Linkmation's value"
   );
   assert.ok(
-    source.includes("networking and email campaigns stay warm without manual effort"),
-    "expected the hero copy to reference keeping networking and email campaigns running"
+    source.includes("automate your emailing and networking"),
+    "expected the hero copy to reference automating emailing and networking"
   );
   assert.ok(
     source.includes("Try Linkmation Free"),
