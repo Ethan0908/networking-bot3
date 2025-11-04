@@ -51,9 +51,14 @@ export default function HomePage() {
       <header className="lm-header">
         <nav className="lm-nav" aria-label="Main">
           <Link href="/" className="lm-logo" aria-label="Linkmation home">
-            <span aria-hidden="true" className="lm-logo-icon">
-              ⛓️
-            </span>
+            <Image
+  src="/app-logo.svg"
+  alt="Linkmation"
+  width={28}
+  height={28}
+  priority
+  className="lm-logo-icon"
+/>
             <span className="lm-logo-wordmark">Linkmation</span>
           </Link>
           <ul className="lm-nav-links">
