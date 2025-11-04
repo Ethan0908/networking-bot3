@@ -777,6 +777,8 @@ export default function Rolodex() {
   const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
   const [emailRecipients, setEmailRecipients] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
+  const [hasAutoLoadedView, setHasAutoLoadedView] = useState(false);
+  const [hasAutoLoadedEmail, setHasAutoLoadedEmail] = useState(false);
   const [csvFileContent, setCsvFileContent] = useState("");
   const [csvFileName, setCsvFileName] = useState("");
   const [csvFileInputKey, setCsvFileInputKey] = useState(0);
@@ -829,6 +831,8 @@ export default function Rolodex() {
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
+  const viewAutoLoadUsernameRef = useRef("");
+  const emailAutoLoadUsernameRef = useRef("");
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -1403,6 +1407,100 @@ export default function Rolodex() {
     [resolveContactId],
   );
 
+  const resetResponses = useCallback(() => {
+    setResponse(null);
+    setInlineSummary("");
+    setErrorMessage("");
+  }, []);
+
+  const fetchContacts = useCallback(async (identifier) => {
+    const r = await fetch("/api/rolodex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "view", username: identifier }),
+    });
+    const text = await r.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!r.ok) {
+      const messageText =
+        (typeof data === "string" && data) ||
+        (data && typeof data === "object" && "error" in data && data.error) ||
+        r.statusText ||
+        "Failed to load contacts";
+      throw new Error(messageText);
+    }
+    const rawRecords = Array.isArray(data) ? data : data ? [data] : [];
+    const records = rawRecords.filter(
+      (record) => record && typeof record === "object",
+    );
+    return { data, records };
+  }, []);
+
+  const loadViewContacts = useCallback(
+    async ({ silent = false } = {}) => {
+      const trimmedUsernameValue = username.trim();
+      if (!trimmedUsernameValue) {
+        const message = "Sign in with Google to view your contacts.";
+        setErrorMessage(message);
+        if (!silent) {
+          pushToast("error", message);
+        }
+        return;
+      }
+
+      setLastAction("view");
+      setLoadingAction("view");
+      clearImportSubmitReset();
+      setImportSubmitStatus("idle");
+      resetResponses();
+      setContactHighlight(false);
+      setCsvImportError("");
+      setSearchKeywordError("");
+      setSearchLinkError("");
+
+      try {
+        const { data, records } = await fetchContacts(trimmedUsernameValue);
+        setResponse(data ?? []);
+        setErrorMessage("");
+        if (records.length === 0) {
+          setInlineSummary("");
+          if (!silent) {
+            pushToast("info", "0 results found.");
+          }
+        } else {
+          setInlineSummary(formatSummary(records[0]));
+          if (!silent) {
+            pushToast("success", "Contact loaded.");
+          }
+        }
+      } catch (error) {
+        const messageText =
+          error instanceof Error ? error.message : "Failed to load contacts";
+        setResponse(null);
+        setInlineSummary("");
+        setErrorMessage(messageText);
+        if (!silent) {
+          pushToast("error", messageText);
+        }
+      } finally {
+        setLoadingAction(null);
+      }
+    },
+    [
+      clearImportSubmitReset,
+      fetchContacts,
+      pushToast,
+      resetResponses,
+      setImportSubmitStatus,
+      username,
+    ],
+  );
+
   const handleLoadEmailContacts = useCallback(async () => {
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
@@ -1412,26 +1510,7 @@ export default function Rolodex() {
     }
     setLoadingContacts(true);
     try {
-      const r = await fetch("/api/rolodex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "view", username: trimmedUsername }),
-      });
-      const text = await r.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = null;
-      }
-      if (!r.ok) {
-        const messageText =
-          (data && typeof data === "object" && "error" in data && data.error) ||
-          r.statusText ||
-          "Failed to load contacts";
-        throw new Error(messageText);
-      }
-      const records = Array.isArray(data) ? data : data ? [data] : [];
+      const { records } = await fetchContacts(trimmedUsername);
       const normalized = records
         .filter((record) => record && typeof record === "object")
         .map((record) => ({ ...record, __contactId: resolveContactId(record) }))
@@ -1439,13 +1518,18 @@ export default function Rolodex() {
       if (normalized.length > 0) {
         setEmailContacts(normalized);
         setPreviewContactId(normalized[0]?.__contactId || "");
+        setIsSampleEmailContacts(false);
       } else {
-        setEmailContacts([]);
-        setPreviewContactId("");
+        const sampleContact = {
+          ...SAMPLE_CONTACT_RECORD,
+          __contactId: SAMPLE_CONTACT_ID,
+        };
+        setEmailContacts([sampleContact]);
+        setPreviewContactId(sampleContact.__contactId);
+        setIsSampleEmailContacts(true);
       }
       setPreviewContent(null);
       setEmailRecipients([]);
-      setIsSampleEmailContacts(false);
       setEmailSearchTerm("");
       if (normalized.length === 0) {
         pushToast("info", "No contacts found for your account.");
@@ -1460,7 +1544,13 @@ export default function Rolodex() {
       setLoadingContacts(false);
     }
     setEmailPageIndex(0);
-  }, [pushToast, resolveContactId, setEmailSearchTerm, username]);
+  }, [
+    fetchContacts,
+    pushToast,
+    resolveContactId,
+    setEmailSearchTerm,
+    username,
+  ]);
 
   const handleCsvFileChange = useCallback(
     (event) => {
@@ -3027,12 +3117,6 @@ export default function Rolodex() {
     [aiIncludedResults, pushToast],
   );
 
-  const resetResponses = useCallback(() => {
-    setResponse(null);
-    setInlineSummary("");
-    setErrorMessage("");
-  }, []);
-
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault();
@@ -3093,14 +3177,6 @@ export default function Rolodex() {
         }
       }
 
-      if (action === "view" && !trimmedUsernameValue) {
-        const message = "Sign in with Google to view a contact.";
-        setErrorMessage(message);
-        pushToast("error", message);
-        setLoadingAction(null);
-        return;
-      }
-
       if (action === "search") {
         if (!trimmedSearchKeyword && !trimmedSearchLink) {
           const message = "Enter a keyword or link to search.";
@@ -3128,6 +3204,11 @@ export default function Rolodex() {
         return;
       }
 
+      if (action === "view") {
+        await loadViewContacts();
+        return;
+      }
+
       const body = {
         action,
         ...(trimmedUsernameValue ? { username: trimmedUsernameValue } : {}),
@@ -3137,7 +3218,7 @@ export default function Rolodex() {
         body.local_id = trimmedContactId;
       }
 
-      if (action === "create" || action === "view" || action === "update") {
+      if (action === "create" || action === "update") {
         Object.assign(body, contactDetails);
       }
 
@@ -3232,14 +3313,6 @@ export default function Rolodex() {
           pushToast("success", "Contact created.");
         } else if (action === "update") {
           pushToast("success", "Contact updated.");
-        } else if (action === "view") {
-          if (!data || (Array.isArray(data) && data.length === 0)) {
-            pushToast("info", "0 results found.");
-          } else {
-            const record = Array.isArray(data) ? data[0] : data;
-            setInlineSummary(formatSummary(record));
-            pushToast("success", "Contact loaded.");
-          }
         } else if (action === "search") {
           pushToast("success", "Search requested.");
         } else if (action === "import") {
@@ -3288,6 +3361,7 @@ export default function Rolodex() {
       searchKeyword,
       searchLink,
       title,
+      loadViewContacts,
       username,
     ],
   );
@@ -3718,42 +3792,82 @@ export default function Rolodex() {
     });
   }, []);
 
+  useEffect(() => {
+    if (activePage !== "view") {
+      if (hasAutoLoadedView) {
+        setHasAutoLoadedView(false);
+      }
+      return;
+    }
+    const trimmedUsernameValue = username.trim();
+    if (
+      !hasAutoLoadedView ||
+      viewAutoLoadUsernameRef.current !== trimmedUsernameValue
+    ) {
+      viewAutoLoadUsernameRef.current = trimmedUsernameValue;
+      setHasAutoLoadedView(true);
+      loadViewContacts();
+    }
+  }, [activePage, hasAutoLoadedView, loadViewContacts, username]);
+
+  useEffect(() => {
+    if (activePage !== "email") {
+      if (hasAutoLoadedEmail) {
+        setHasAutoLoadedEmail(false);
+      }
+      return;
+    }
+    const trimmedUsernameValue = username.trim();
+    if (
+      !hasAutoLoadedEmail ||
+      emailAutoLoadUsernameRef.current !== trimmedUsernameValue
+    ) {
+      emailAutoLoadUsernameRef.current = trimmedUsernameValue;
+      setHasAutoLoadedEmail(true);
+      handleLoadEmailContacts();
+    }
+  }, [
+    activePage,
+    handleLoadEmailContacts,
+    hasAutoLoadedEmail,
+    username,
+  ]);
+
   return (
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      {(activePage === "view" || activePage === "email") && (
+        <div className="rolodex-top-actions">
+          {activePage === "view" ? (
+            <button
+              type="submit"
+              form="view-form"
+              value="view"
+              className="button tertiary load-contacts-button"
+              disabled={disableSubmit}
+              aria-busy={loadingAction === "view"}
+            >
+              {loadingAction === "view" ? <IconLoader /> : null}
+              {loadingAction === "view" ? "Loading…" : "Load Contacts"}
+            </button>
+          ) : null}
+          {activePage === "email" ? (
+            <button
+              type="button"
+              className="button tertiary load-contacts-button"
+              onClick={handleLoadEmailContacts}
+              disabled={loadingContacts}
+              aria-busy={loadingContacts}
+            >
+              {loadingContacts ? <IconLoader /> : null}
+              {loadingContacts ? "Loading…" : "Load Contacts"}
+            </button>
+          ) : null}
+        </div>
+      )}
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            {(activePage === "view" || activePage === "email") && (
-              <div className="field-inline-actions">
-                {activePage === "view" && (
-                  <button
-                    type="submit"
-                    form="view-form"
-                    value="view"
-                    className="button tertiary load-contacts-button"
-                    disabled={disableSubmit}
-                    aria-busy={loadingAction === "view"}
-                  >
-                    {loadingAction === "view" ? <IconLoader /> : null}
-                    {loadingAction === "view" ? "Loading…" : "Load Contacts"}
-                  </button>
-                )}
-                {activePage === "email" && (
-                  <button
-                    type="button"
-                    className="button tertiary load-contacts-button"
-                    onClick={handleLoadEmailContacts}
-                    disabled={loadingContacts}
-                    aria-busy={loadingContacts}
-                  >
-                    {loadingContacts ? <IconLoader /> : null}
-                    {loadingContacts ? "Loading…" : "Load Contacts"}
-                  </button>
-                )}
-              </div>
-            )}
-
             <div className="gmail-inline-field">
               <button
                 type="button"

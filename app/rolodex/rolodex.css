@@ -90,6 +90,7 @@ html.theme-dark {
       transparent 55%
     ),
     var(--surface-background);
+  position: relative;
 }
 
 .rolodex-card {
@@ -107,6 +108,16 @@ html.theme-dark {
   position: relative;
 }
 
+.rolodex-top-actions {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1;
+}
+
 .rolodex-card--no-heading {
   padding-top: 24px;
   gap: 16px;
@@ -120,6 +131,12 @@ html.theme-dark {
     border-radius: 24px;
     padding: 22px;
     gap: 20px;
+  }
+  .rolodex-top-actions {
+    position: static;
+    width: 100%;
+    justify-content: flex-end;
+    margin-bottom: 12px;
   }
 }
 
@@ -355,12 +372,6 @@ html.theme-dark {
   flex-shrink: 0;
 }
 
-.context-primary-row .field-inline-actions {
-  flex: 1 1 320px;
-  min-width: 220px;
-  justify-content: flex-start;
-}
-
 .contact-id-field {
   width: 100%;
 }
@@ -390,12 +401,6 @@ html.theme-dark {
     margin-left: 0;
   }
 
-  .context-primary-row .field-inline-actions {
-    flex: 0 0 100%;
-    min-width: 0;
-    order: 0;
-    justify-content: flex-start;
-  }
 }
 
 .field-input-row {
@@ -406,16 +411,6 @@ html.theme-dark {
 
 .field-input-row .text-input {
   flex: 1 1 auto;
-}
-
-.field-inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.field-inline-actions .button {
-  white-space: nowrap;
 }
 
 .visually-hidden {
