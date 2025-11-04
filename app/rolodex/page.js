@@ -3723,28 +3723,6 @@ export default function Rolodex() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            <div className="gmail-inline-field">
-              <button
-                type="button"
-                className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-                onClick={handleGmailClick}
-                disabled={gmailStatus === "connecting"}
-                aria-busy={gmailStatus === "connecting"}
-              >
-                <span className="icon">
-                  {gmailStatus === "connecting" ? (
-                    <IconLoader />
-                  ) : gmailStatus === "connected" ? (
-                    <IconCheck />
-                  ) : (
-                    <IconMail />
-                  )}
-                </span>
-                {gmailLabel}
-                <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-              </button>
-            </div>
-
             <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
               <label className="field-label" htmlFor="username">
                 Username
@@ -3793,6 +3771,28 @@ export default function Rolodex() {
                   ? "Username is required to view a contact."
                   : "Used to look up contacts across every tab."}
               </div>
+            </div>
+
+            <div className="gmail-inline-field">
+              <button
+                type="button"
+                className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+                onClick={handleGmailClick}
+                disabled={gmailStatus === "connecting"}
+                aria-busy={gmailStatus === "connecting"}
+              >
+                <span className="icon">
+                  {gmailStatus === "connecting" ? (
+                    <IconLoader />
+                  ) : gmailStatus === "connected" ? (
+                    <IconCheck />
+                  ) : (
+                    <IconMail />
+                  )}
+                </span>
+                {gmailLabel}
+                <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+              </button>
             </div>
 
             <div className="theme-inline-field">
