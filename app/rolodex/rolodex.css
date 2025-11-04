@@ -327,9 +327,9 @@ html.theme-dark {
 
 .context-primary-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 14px 16px;
 }
 
@@ -342,13 +342,19 @@ html.theme-dark {
 }
 
 .context-primary-row .theme-inline-field {
-  order: 0;
+  order: 1;
+  margin-left: auto;
 }
 
 .context-primary-row .username-field {
   flex: 1 1 320px;
   min-width: 220px;
-  order: 1;
+  order: 0;
+  min-height: auto;
+}
+
+.context-primary-row .username-field .field-input-row {
+  align-items: center;
 }
 
 .context-primary-row .gmail-inline-field {
@@ -366,6 +372,7 @@ html.theme-dark {
 
 @media (max-width: 768px) {
   .context-primary-row {
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 12px;
   }
@@ -379,6 +386,7 @@ html.theme-dark {
   .context-primary-row .theme-inline-field {
     order: 0;
     justify-content: flex-start;
+    margin-left: 0;
   }
 
   .context-primary-row .gmail-inline-field {
