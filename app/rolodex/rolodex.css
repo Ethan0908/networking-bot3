@@ -341,16 +341,6 @@ html.theme-dark {
   flex: 0 0 auto;
 }
 
-.context-primary-row .username-field {
-  flex: 1 1 320px;
-  min-width: 220px;
-  order: 0;
-  min-height: auto;
-  position: relative;
-  gap: 0;
-  padding-bottom: calc(var(--field-helper-height) + 6px);
-}
-
 .context-primary-row .gmail-inline-field {
   order: 1;
   margin-left: auto;
@@ -361,19 +351,14 @@ html.theme-dark {
   order: 2;
 }
 
-.context-primary-row .username-field .field-input-row {
-  align-items: center;
-}
-
-.context-primary-row .username-field .helper-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-}
-
 .context-primary-row .gmail-inline-field .gmail-button {
   flex-shrink: 0;
+}
+
+.context-primary-row .field-inline-actions {
+  flex: 1 1 320px;
+  min-width: 220px;
+  justify-content: flex-start;
 }
 
 .contact-id-field {
@@ -405,10 +390,11 @@ html.theme-dark {
     margin-left: 0;
   }
 
-  .context-primary-row .username-field {
+  .context-primary-row .field-inline-actions {
     flex: 0 0 100%;
     min-width: 0;
-    order: 2;
+    order: 0;
+    justify-content: flex-start;
   }
 }
 

@@ -729,7 +729,12 @@ function IconAlert(props) {
 
 export default function Rolodex() {
   const { data: authSession, status: authStatus } = useSession();
-  const [username, setUsername] = useState("");
+  const resolvedSessionUsername = useMemo(() => {
+    const candidate =
+      (authSession?.user?.email ?? authSession?.user?.name ?? "").trim();
+    return candidate;
+  }, [authSession?.user?.email, authSession?.user?.name]);
+  const [username, setUsername] = useState(resolvedSessionUsername);
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
@@ -760,7 +765,6 @@ export default function Rolodex() {
     email: false,
     profileUrl: false,
   });
-  const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -954,6 +958,12 @@ export default function Rolodex() {
   }, []);
 
   useEffect(() => {
+    setUsername((prev) =>
+      prev === resolvedSessionUsername ? prev : resolvedSessionUsername,
+    );
+  }, [resolvedSessionUsername]);
+
+  useEffect(() => {
     if (authStatus === "loading") {
       return;
     }
@@ -1081,12 +1091,6 @@ export default function Rolodex() {
       window.localStorage.setItem("rolodex-theme", theme);
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (usernameHighlight && username.trim()) {
-      setUsernameHighlight(false);
-    }
-  }, [usernameHighlight, username]);
 
   useEffect(() => {
     if (contactHighlight && contactId.trim()) {
@@ -1402,8 +1406,7 @@ export default function Rolodex() {
   const handleLoadEmailContacts = useCallback(async () => {
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      const messageText = "Username is required to load contacts.";
-      setUsernameHighlight(true);
+      const messageText = "Sign in with Google to load contacts.";
       pushToast("error", messageText);
       return;
     }
@@ -1445,7 +1448,7 @@ export default function Rolodex() {
       setIsSampleEmailContacts(false);
       setEmailSearchTerm("");
       if (normalized.length === 0) {
-        pushToast("info", "No contacts found for this username.");
+        pushToast("info", "No contacts found for your account.");
       } else {
         pushToast("success", "Contacts loaded for emailing.");
       }
@@ -3044,7 +3047,6 @@ export default function Rolodex() {
       clearImportSubmitReset();
       setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
-      setUsernameHighlight(false);
       setContactHighlight(false);
       setCsvImportError("");
       setSearchKeywordError("");
@@ -3092,10 +3094,9 @@ export default function Rolodex() {
       }
 
       if (action === "view" && !trimmedUsernameValue) {
-        const message = "Username is required to view a contact.";
+        const message = "Sign in with Google to view a contact.";
         setErrorMessage(message);
         pushToast("error", message);
-        setUsernameHighlight(true);
         setLoadingAction(null);
         return;
       }
@@ -3723,55 +3724,35 @@ export default function Rolodex() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <div className="field-input-row">
-                <input
-                id="username"
-                className="text-input"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Username"
-                autoComplete="off"
-              />
-              {(activePage === "view" || activePage === "email") && (
-                <div className="field-inline-actions">
-                  {activePage === "view" && (
-                    <button
-                      type="submit"
-                      form="view-form"
-                      value="view"
-                      className="button tertiary load-contacts-button"
-                      disabled={disableSubmit}
-                      aria-busy={loadingAction === "view"}
-                    >
-                      {loadingAction === "view" ? <IconLoader /> : null}
-                      {loadingAction === "view" ? "Loading…" : "Load Contacts"}
-                    </button>
-                  )}
-                  {activePage === "email" && (
-                    <button
-                      type="button"
-                      className="button tertiary load-contacts-button"
-                      onClick={handleLoadEmailContacts}
-                      disabled={loadingContacts}
-                      aria-busy={loadingContacts}
-                    >
-                      {loadingContacts ? <IconLoader /> : null}
-                      {loadingContacts ? "Loading…" : "Load Contacts"}
-                    </button>
-                  )}
-                </div>
-              )}
+            {(activePage === "view" || activePage === "email") && (
+              <div className="field-inline-actions">
+                {activePage === "view" && (
+                  <button
+                    type="submit"
+                    form="view-form"
+                    value="view"
+                    className="button tertiary load-contacts-button"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "view"}
+                  >
+                    {loadingAction === "view" ? <IconLoader /> : null}
+                    {loadingAction === "view" ? "Loading…" : "Load Contacts"}
+                  </button>
+                )}
+                {activePage === "email" && (
+                  <button
+                    type="button"
+                    className="button tertiary load-contacts-button"
+                    onClick={handleLoadEmailContacts}
+                    disabled={loadingContacts}
+                    aria-busy={loadingContacts}
+                  >
+                    {loadingContacts ? <IconLoader /> : null}
+                    {loadingContacts ? "Loading…" : "Load Contacts"}
+                  </button>
+                )}
               </div>
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Used to look up contacts across every tab."}
-              </div>
-            </div>
+            )}
 
             <div className="gmail-inline-field">
               <button
@@ -4203,7 +4184,7 @@ export default function Rolodex() {
                 noValidate
               >
                 <p className="view-helper">
-                  Use the username above to load a contact.
+                  Contacts are loaded using your Google account.
                 </p>
               </form>
             </div>
