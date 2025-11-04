@@ -1118,16 +1118,16 @@ export default function Rolodex() {
         return;
       }
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-        pushToast("info", "Local ID copied.");
+        pushToast("info", "Contact ID copied.");
         return;
       }
       navigator.clipboard
         .writeText(trimmed)
         .then(() => {
-          pushToast("info", "Local ID copied.");
+          pushToast("info", "Contact ID copied.");
         })
         .catch(() => {
-          pushToast("error", "Unable to copy local ID.");
+          pushToast("error", "Unable to copy contact ID.");
         });
     },
     [pushToast],
@@ -3082,7 +3082,7 @@ export default function Rolodex() {
 
       if (action === "update") {
         if (!trimmedContactId) {
-          const message = "Local ID is required to update.";
+          const message = "Contact ID is required to update.";
           setErrorMessage(message);
           pushToast("error", message);
           setContactHighlight(true);
@@ -3119,6 +3119,12 @@ export default function Rolodex() {
             return;
           }
         }
+        const permissionMessage = "need permission.";
+        setErrorMessage(permissionMessage);
+        pushToast("error", permissionMessage);
+        setSearchKeywordError(permissionMessage);
+        setLoadingAction(null);
+        return;
       }
 
       const body = {
@@ -3715,27 +3721,36 @@ export default function Rolodex() {
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
-        <header className="rolodex-header no-heading">
-          <div className="header-actions">
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={themeToggleLabel}
-            >
-              {theme === "dark" ? <IconSun /> : <IconMoon />}
-              <span>{theme === "dark" ? "Light" : "Dark"}</span>
-            </button>
-          </div>
-        </header>
-
         <div className="context-grid" role="group" aria-label="Contact context">
-          <div className={`field${usernameHighlight ? " error" : ""}`}>
-            <label className="field-label" htmlFor="username">
-              Username
-            </label>
-            <div className="field-input-row">
-              <input
+          <div className="context-primary-row">
+            <div className="gmail-inline-field">
+              <button
+                type="button"
+                className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+                onClick={handleGmailClick}
+                disabled={gmailStatus === "connecting"}
+                aria-busy={gmailStatus === "connecting"}
+              >
+                <span className="icon">
+                  {gmailStatus === "connecting" ? (
+                    <IconLoader />
+                  ) : gmailStatus === "connected" ? (
+                    <IconCheck />
+                  ) : (
+                    <IconMail />
+                  )}
+                </span>
+                {gmailLabel}
+                <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+              </button>
+            </div>
+
+            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
+              <label className="field-label" htmlFor="username">
+                Username
+              </label>
+              <div className="field-input-row">
+                <input
                 id="username"
                 className="text-input"
                 value={username}
@@ -3772,47 +3787,37 @@ export default function Rolodex() {
                   )}
                 </div>
               )}
+              </div>
+              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                {usernameHighlight
+                  ? "Username is required to view a contact."
+                  : "Used to look up contacts across every tab."}
+              </div>
             </div>
-            <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-              {usernameHighlight
-                ? "Username is required to view a contact."
-                : "Used to look up contacts across every tab."}
+
+            <div className="theme-inline-field">
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={toggleTheme}
+                aria-label={themeToggleLabel}
+              >
+                {theme === "dark" ? <IconSun /> : <IconMoon />}
+                <span>{theme === "dark" ? "Light" : "Dark"}</span>
+              </button>
             </div>
-          </div>
-          <div className="gmail-inline-field">
-            <button
-              type="button"
-              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-              onClick={handleGmailClick}
-              disabled={gmailStatus === "connecting"}
-              aria-busy={gmailStatus === "connecting"}
-            >
-              <span className="icon">
-                {gmailStatus === "connecting" ? (
-                  <IconLoader />
-                ) : gmailStatus === "connected" ? (
-                  <IconCheck />
-                ) : (
-                  <IconMail />
-                )}
-              </span>
-              {gmailLabel}
-              <span className="gmail-tooltip">
-                Use Gmail to auto-log emails.
-              </span>
-            </button>
           </div>
           {showContactIdField && (
-            <div className={`field${contactHighlight ? " error" : ""}`}>
+            <div className={`field contact-id-field${contactHighlight ? " error" : ""}`}>
               <label className="field-label" htmlFor="contactId">
-                Local ID
+                Contact ID
               </label>
               <input
                 id="contactId"
                 className="text-input"
                 value={contactId}
                 onChange={(event) => setContactId(event.target.value)}
-                placeholder="Local ID"
+                placeholder="Contact ID"
                 autoComplete="off"
               />
               {contactId.trim() && (
@@ -3820,14 +3825,14 @@ export default function Rolodex() {
                   type="button"
                   className="copy-button"
                   onClick={handleCopyContactId}
-                  aria-label="Copy local ID"
+                  aria-label="Copy contact ID"
                 >
                   <IconCopy />
                 </button>
               )}
               <div className={`helper-text${contactHighlight ? " error" : ""}`}>
                 {contactHighlight
-                  ? "Local ID is required to update."
+                  ? "Contact ID is required to update."
                   : "Needed when updating a contact."}
               </div>
             </div>
