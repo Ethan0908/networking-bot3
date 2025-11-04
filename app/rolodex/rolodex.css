@@ -351,10 +351,20 @@ html.theme-dark {
   min-width: 220px;
   order: 0;
   min-height: auto;
+  position: relative;
+  gap: 0;
+  padding-bottom: calc(var(--field-helper-height) + 6px);
 }
 
 .context-primary-row .username-field .field-input-row {
   align-items: center;
+}
+
+.context-primary-row .username-field .helper-text {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
 }
 
 .context-primary-row .gmail-inline-field {
