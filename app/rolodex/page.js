@@ -3719,27 +3719,6 @@ export default function Rolodex() {
           <div className="header-actions">
             <button
               type="button"
-              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-              onClick={handleGmailClick}
-              disabled={gmailStatus === "connecting"}
-              aria-busy={gmailStatus === "connecting"}
-            >
-              <span className="icon">
-                {gmailStatus === "connecting" ? (
-                  <IconLoader />
-                ) : gmailStatus === "connected" ? (
-                  <IconCheck />
-                ) : (
-                  <IconMail />
-                )}
-              </span>
-              {gmailLabel}
-              <span className="gmail-tooltip">
-                Use Gmail to auto-log emails.
-              </span>
-            </button>
-            <button
-              type="button"
               className="theme-toggle"
               onClick={toggleTheme}
               aria-label={themeToggleLabel}
@@ -3799,6 +3778,29 @@ export default function Rolodex() {
                 ? "Username is required to view a contact."
                 : "Used to look up contacts across every tab."}
             </div>
+          </div>
+          <div className="gmail-inline-field">
+            <button
+              type="button"
+              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+              onClick={handleGmailClick}
+              disabled={gmailStatus === "connecting"}
+              aria-busy={gmailStatus === "connecting"}
+            >
+              <span className="icon">
+                {gmailStatus === "connecting" ? (
+                  <IconLoader />
+                ) : gmailStatus === "connected" ? (
+                  <IconCheck />
+                ) : (
+                  <IconMail />
+                )}
+              </span>
+              {gmailLabel}
+              <span className="gmail-tooltip">
+                Use Gmail to auto-log emails.
+              </span>
+            </button>
           </div>
           {showContactIdField && (
             <div className={`field${contactHighlight ? " error" : ""}`}>
