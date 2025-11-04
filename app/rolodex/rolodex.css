@@ -80,7 +80,10 @@ html.theme-dark {
 .rolodex-page {
   min-height: calc(100vh - 48px);
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 16px;
   padding: 48px 24px 64px;
   background:
     radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.08), transparent 55%),
@@ -90,6 +93,70 @@ html.theme-dark {
       transparent 55%
     ),
     var(--surface-background);
+  position: relative;
+}
+
+.rolodex-shell {
+  width: 100%;
+  max-width: 1024px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rolodex-shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rolodex-shell-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.menu-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--card-border);
+  background: var(--card-background);
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
+}
+
+.menu-toggle:hover,
+.menu-toggle:focus-visible {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.menu-toggle:active {
+  transform: translateY(1px);
+}
+
+.menu-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.menu-toggle-label {
+  font-size: 0.9rem;
 }
 
 .rolodex-card {
@@ -120,6 +187,30 @@ html.theme-dark {
     border-radius: 24px;
     padding: 22px;
     gap: 20px;
+  }
+  .menu-toggle {
+    display: inline-flex;
+  }
+  .rolodex-shell-actions {
+    width: 100%;
+  }
+  .rolodex-card-header {
+    gap: 10px;
+  }
+  .rolodex-card-header .contact-id-field {
+    max-width: none;
+  }
+  .rolodex-tabs {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .rolodex-tabs.open {
+    display: flex;
+  }
+  .tab-button {
+    width: 100%;
+    text-align: center;
   }
 }
 
@@ -319,97 +410,18 @@ html.theme-dark {
   }
 }
 
-.context-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.context-primary-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 14px 16px;
-}
-
-.context-primary-row .gmail-inline-field,
-.context-primary-row .theme-inline-field {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-
-.context-primary-row .username-field {
-  flex: 1 1 320px;
-  min-width: 220px;
-  order: 0;
-  min-height: auto;
-  position: relative;
-  gap: 0;
-  padding-bottom: calc(var(--field-helper-height) + 6px);
-}
-
-.context-primary-row .gmail-inline-field {
-  order: 1;
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.context-primary-row .theme-inline-field {
-  order: 2;
-}
-
-.context-primary-row .username-field .field-input-row {
-  align-items: center;
-}
-
-.context-primary-row .username-field .helper-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-}
-
-.context-primary-row .gmail-inline-field .gmail-button {
-  flex-shrink: 0;
-}
-
 .contact-id-field {
   width: 100%;
 }
 
-@media (max-width: 768px) {
-  .context-primary-row {
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 12px;
-  }
+.rolodex-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
-  .context-primary-row .theme-inline-field,
-  .context-primary-row .gmail-inline-field {
-    flex: 1 1 calc(50% - 6px);
-    min-width: 0;
-  }
-
-  .context-primary-row .theme-inline-field {
-    order: 0;
-    justify-content: flex-start;
-    margin-left: 0;
-  }
-
-  .context-primary-row .gmail-inline-field {
-    order: 1;
-    justify-content: flex-end;
-    margin-left: 0;
-  }
-
-  .context-primary-row .username-field {
-    flex: 0 0 100%;
-    min-width: 0;
-    order: 2;
-  }
+.rolodex-card-header .contact-id-field {
+  max-width: 360px;
 }
 
 .field-input-row {
@@ -420,16 +432,6 @@ html.theme-dark {
 
 .field-input-row .text-input {
   flex: 1 1 auto;
-}
-
-.field-inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.field-inline-actions .button {
-  white-space: nowrap;
 }
 
 .visually-hidden {
@@ -448,6 +450,10 @@ html.theme-dark {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.rolodex-tabs.open {
+  display: flex;
 }
 
 .tab-button {
