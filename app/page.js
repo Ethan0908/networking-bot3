@@ -46,70 +46,71 @@ const howItWorks = [
 ];
 
 export default function HomePage() {
-  return (
-    <>
-      <header className="lm-header">
-        <nav className="lm-nav" aria-label="Main">
-          <Link href="/" className="lm-logo" aria-label="Linkmation home">
-            <Image
-  src="/app-logo.svg"
-  alt="Linkmation"
-  width={28}
-  height={28}
-  priority
-  className="lm-logo-icon"
-/>
-            <span className="lm-logo-wordmark">Linkmation</span>
-          </Link>
-          <ul className="lm-nav-links">
-            <li>
-              <a href="#hero">Home</a>
-            </li>
-            <li>
-              <a href="#features">Features</a>
-            </li>
-            <li>
-              <a href="#how-it-works">How it Works</a>
-            </li>
-            <li>
-              <a href="https://linkmation.me/privacy" target="_blank" rel="noreferrer">
-                Privacy
-              </a>
-            </li>
-            <li>
-              <a href="https://linkmation.me/terms" target="_blank" rel="noreferrer">
-                Terms
-              </a>
-            </li>
-          </ul>
-          <Link className="lm-nav-cta" href="/rolodex">
-            Get Started
-          </Link>
-        </nav>
-      </header>
+    return (
+        <>
+              <header className="lm-header">
+                      <nav className="lm-nav" aria-label="Main">
+                                <Link href="/" className="lm-logo" aria-label="Linkmation home">
+                                            <Image
+                                              src="/app-logo.svg"
+                                                alt="Linkmation"
+                                                  width={28}
+                                                    height={28}
+                                                      priority
+                                                        className="lm-logo-icon"
+                                                        />
+                                                                    <span className="lm-logo-wordmark">Linkmation</span>
+                                                                              </Link>
+                                                                                        <ul className="lm-nav-links">
+                                                                                                    <li>
+                                                                                                                  <a href="#hero">Home</a>
+                                                                                                                              </li>
+                                                                                                                                          <li>
+                                                                                                                                                        <a href="#features">Features</a>
+                                                                                                                                                                    </li>
+                                                                                                                                                                                <li>
+                                                                                                                                                                                              <a href="#how-it-works">How it Works</a>
+                                                                                                                                                                                                          </li>
+                                                                                                                                                                                                                      <li>
+                                                                                                                                                                                                                                    <a href="https://linkmation.me/privacy" target="_blank" rel="noreferrer">
+                                                                                                                                                                                                                                                    Privacy
+                                                                                                                                                                                                                                                                  </a>
+                                                                                                                                                                                                                                                                              </li>
+                                                                                                                                                                                                                                                                                          <li>
+                                                                                                                                                                                                                                                                                                        <a href="https://linkmation.me/terms" target="_blank" rel="noreferrer">
+                                                                                                                                                                                                                                                                                                                        Terms
+                                                                                                                                                                                                                                                                                                                                      </a>
+                                                                                                                                                                                                                                                                                                                                                  </li>
+                                                                                                                                                                                                                                                                                                                                                            </ul>
+                                                                                                                                                                                                                                                                                                                                                                      <Link className="lm-nav-cta" href="/rolodex">
+                                                                                                                                                                                                                                                                                                                                                                                  Get Started
+                                                                                                                                                                                                                                                                                                                                                                                            </Link>
+                                                                                                                                                                                                                                                                                                                                                                                                    </nav>
+                                                                                                                                                                                                                                                                                                                                                                                                          </header>
 
-      <main className="lm-main">
-        <section id="hero" className="lm-hero" aria-labelledby="hero-title">
-          <div className="lm-hero-copy">
-            <h1 id="hero-title">Automate and manage your links with ease.</h1>
-            <p>
-              Linkmation helps you organize, automate, and track all your links from one intuitive dashboard so you can launch
-              campaigns faster, automate your emailing and networking, and stay confident in your analytics.
-            </p>
-            <div className="lm-hero-actions">
-              <Link className="lm-button lm-button-primary" href="/rolodex">
-                Try Linkmation Free
-              </Link>
-              <a className="lm-button lm-button-outline" href="#features">
-                Learn More
-              </a>
-            </div>
-            <ul className="lm-hero-highlights">
-              <li>Unified dashboard for every link you manage</li>
-              <li>Analytics that update in real time</li>
-              <li>Automations that keep your workflows current</li>
-            </ul>
-          </div>
+                                                                                                                                                                                                                                                                                                                                                                                                                <main className="lm-main">
+                                                                                                                                                                                                                                                                                                                                                                                                                        <section id="hero" className="lm-hero" aria-labelledby="hero-title">
+                                                                                                                                                                                                                                                                                                                                                                                                                                  <div className="lm-hero-copy">
+                                                                                                                                                                                                                                                                                                                                                                                                                                              <h1 id="hero-title">Automate and manage your links with ease.</h1>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                          <p>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Linkmation helps you organize, automate, and track all your links from one intuitive dashboard so you can launch
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      campaigns faster, automate your emailing and networking, and stay confident in your analytics.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </p>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              <div className="lm-hero-actions">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            <Link className="lm-button lm-button-primary" href="/rolodex">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            Try Linkmation Free
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          </Link>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        <a className="lm-button lm-button-outline" href="#features">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        Learn More
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      </a>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  </div>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              <ul className="lm-hero-highlights">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            <li>Unified dashboard for every link you manage</li>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          <li>Analytics that update in real time</li>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        <li>Automations that keep your workflows current</li>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    </ul>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              </div>
+}
           <div className="lm-hero-visual" role="img" aria-label="Linkmation dashboard preview with analytics and automations">
             <div className="lm-hero-card">
               <header>
