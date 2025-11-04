@@ -763,6 +763,10 @@ export default function Rolodex() {
   const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchLink, setSearchLink] = useState("");
+  const [searchKeywordError, setSearchKeywordError] = useState("");
+  const [searchLinkError, setSearchLinkError] = useState("");
   const [emailContacts, setEmailContacts] = useState(() => [
     { ...SAMPLE_CONTACT_RECORD, __contactId: SAMPLE_CONTACT_ID },
   ]);
@@ -1114,16 +1118,16 @@ export default function Rolodex() {
         return;
       }
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-        pushToast("info", "Local ID copied.");
+        pushToast("info", "Contact ID copied.");
         return;
       }
       navigator.clipboard
         .writeText(trimmed)
         .then(() => {
-          pushToast("info", "Local ID copied.");
+          pushToast("info", "Contact ID copied.");
         })
         .catch(() => {
-          pushToast("error", "Unable to copy local ID.");
+          pushToast("error", "Unable to copy contact ID.");
         });
     },
     [pushToast],
@@ -3043,10 +3047,14 @@ export default function Rolodex() {
       setUsernameHighlight(false);
       setContactHighlight(false);
       setCsvImportError("");
+      setSearchKeywordError("");
+      setSearchLinkError("");
 
       const trimmedUsernameValue = username.trim();
       const trimmedContactId = contactId.trim();
       const trimmedProfileUrlValue = profileUrl.trim();
+      const trimmedSearchKeyword = searchKeyword.trim();
+      const trimmedSearchLink = searchLink.trim();
       if (trimmedProfileUrlValue) {
         const { status, message } = validateProfileUrl(trimmedProfileUrlValue);
         setFieldTouched((prev) => ({ ...prev, profileUrl: true }));
@@ -3074,7 +3082,7 @@ export default function Rolodex() {
 
       if (action === "update") {
         if (!trimmedContactId) {
-          const message = "Local ID is required to update.";
+          const message = "Contact ID is required to update.";
           setErrorMessage(message);
           pushToast("error", message);
           setContactHighlight(true);
@@ -3092,6 +3100,33 @@ export default function Rolodex() {
         return;
       }
 
+      if (action === "search") {
+        if (!trimmedSearchKeyword && !trimmedSearchLink) {
+          const message = "Enter a keyword or link to search.";
+          setErrorMessage(message);
+          pushToast("error", message);
+          setSearchKeywordError(message);
+          setLoadingAction(null);
+          return;
+        }
+        if (trimmedSearchLink) {
+          const { status, message } = validateProfileUrl(trimmedSearchLink);
+          if (status === "error") {
+            setErrorMessage(message);
+            pushToast("error", message);
+            setSearchLinkError(message);
+            setLoadingAction(null);
+            return;
+          }
+        }
+        const permissionMessage = "need permission.";
+        setErrorMessage(permissionMessage);
+        pushToast("error", permissionMessage);
+        setSearchKeywordError(permissionMessage);
+        setLoadingAction(null);
+        return;
+      }
+
       const body = {
         action,
         ...(trimmedUsernameValue ? { username: trimmedUsernameValue } : {}),
@@ -3103,6 +3138,15 @@ export default function Rolodex() {
 
       if (action === "create" || action === "view" || action === "update") {
         Object.assign(body, contactDetails);
+      }
+
+      if (action === "search") {
+        if (trimmedSearchKeyword) {
+          body.keyword = trimmedSearchKeyword;
+        }
+        if (trimmedSearchLink) {
+          body.link = trimmedSearchLink;
+        }
       }
 
       if (action === "import") {
@@ -3195,6 +3239,8 @@ export default function Rolodex() {
             setInlineSummary(formatSummary(record));
             pushToast("success", "Contact loaded.");
           }
+        } else if (action === "search") {
+          pushToast("success", "Search requested.");
         } else if (action === "import") {
           pushToast("success", "Import requested.");
           setCsvFileContent("");
@@ -3238,6 +3284,8 @@ export default function Rolodex() {
       profileUrl,
       pushToast,
       resetResponses,
+      searchKeyword,
+      searchLink,
       title,
       username,
     ],
@@ -3378,6 +3426,7 @@ export default function Rolodex() {
 
   const tabs = [
     { id: "create", label: "Create" },
+    { id: "search", label: "Search" },
     { id: "import", label: "Import" },
     { id: "view", label: "View" },
     { id: "update", label: "Update" },
@@ -3671,76 +3720,104 @@ export default function Rolodex() {
   return (
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
-      <section className="rolodex-card" aria-labelledby="rolodex-heading">
-        <header className="rolodex-header">
-          <div className="rolodex-heading">
-            <h1 id="rolodex-heading">Rolodex</h1>
-            <p>Track contacts and follow-ups.</p>
-          </div>
-          <div className="header-actions">
-            <button
-              type="button"
-              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-              onClick={handleGmailClick}
-              disabled={gmailStatus === "connecting"}
-              aria-busy={gmailStatus === "connecting"}
-            >
-              <span className="icon">
-                {gmailStatus === "connecting" ? (
-                  <IconLoader />
-                ) : gmailStatus === "connected" ? (
-                  <IconCheck />
-                ) : (
-                  <IconMail />
-                )}
-              </span>
-              {gmailLabel}
-              <span className="gmail-tooltip">
-                Use Gmail to auto-log emails.
-              </span>
-            </button>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={themeToggleLabel}
-            >
-              {theme === "dark" ? <IconSun /> : <IconMoon />}
-              <span>{theme === "dark" ? "Light" : "Dark"}</span>
-            </button>
-          </div>
-        </header>
-
+      <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
-          <div className={`field${usernameHighlight ? " error" : ""}`}>
-            <label className="field-label" htmlFor="username">
-              Username
-            </label>
-            <input
-              id="username"
-              className="text-input"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="Username"
-              autoComplete="off"
-            />
-            <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-              {usernameHighlight
-                ? "Username is required to view a contact."
-                : "Used to look up contacts across every tab."}
+          <div className="context-primary-row">
+            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
+              <label className="field-label" htmlFor="username">
+                Username
+              </label>
+              <div className="field-input-row">
+                <input
+                id="username"
+                className="text-input"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Username"
+                autoComplete="off"
+              />
+              {(activePage === "view" || activePage === "email") && (
+                <div className="field-inline-actions">
+                  {activePage === "view" && (
+                    <button
+                      type="submit"
+                      form="view-form"
+                      value="view"
+                      className="button tertiary load-contacts-button"
+                      disabled={disableSubmit}
+                      aria-busy={loadingAction === "view"}
+                    >
+                      {loadingAction === "view" ? <IconLoader /> : null}
+                      {loadingAction === "view" ? "Loading…" : "Load Contacts"}
+                    </button>
+                  )}
+                  {activePage === "email" && (
+                    <button
+                      type="button"
+                      className="button tertiary load-contacts-button"
+                      onClick={handleLoadEmailContacts}
+                      disabled={loadingContacts}
+                      aria-busy={loadingContacts}
+                    >
+                      {loadingContacts ? <IconLoader /> : null}
+                      {loadingContacts ? "Loading…" : "Load Contacts"}
+                    </button>
+                  )}
+                </div>
+              )}
+              </div>
+              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
+                {usernameHighlight
+                  ? "Username is required to view a contact."
+                  : "Used to look up contacts across every tab."}
+              </div>
+            </div>
+
+            <div className="gmail-inline-field">
+              <button
+                type="button"
+                className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+                onClick={handleGmailClick}
+                disabled={gmailStatus === "connecting"}
+                aria-busy={gmailStatus === "connecting"}
+              >
+                <span className="icon">
+                  {gmailStatus === "connecting" ? (
+                    <IconLoader />
+                  ) : gmailStatus === "connected" ? (
+                    <IconCheck />
+                  ) : (
+                    <IconMail />
+                  )}
+                </span>
+                {gmailLabel}
+                <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+              </button>
+            </div>
+
+            <div className="theme-inline-field">
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={toggleTheme}
+                aria-label={themeToggleLabel}
+              >
+                {theme === "dark" ? <IconSun /> : <IconMoon />}
+                <span>{theme === "dark" ? "Light" : "Dark"}</span>
+              </button>
             </div>
           </div>
           {showContactIdField && (
-            <div className={`field${contactHighlight ? " error" : ""}`}>
+            <div className={`field contact-id-field${contactHighlight ? " error" : ""}`}>
               <label className="field-label" htmlFor="contactId">
-                Local ID
+                Contact ID
               </label>
               <input
                 id="contactId"
                 className="text-input"
                 value={contactId}
                 onChange={(event) => setContactId(event.target.value)}
-                placeholder="Local ID"
+                placeholder="Contact ID"
                 autoComplete="off"
               />
               {contactId.trim() && (
@@ -3748,14 +3825,14 @@ export default function Rolodex() {
                   type="button"
                   className="copy-button"
                   onClick={handleCopyContactId}
-                  aria-label="Copy local ID"
+                  aria-label="Copy contact ID"
                 >
                   <IconCopy />
                 </button>
               )}
               <div className={`helper-text${contactHighlight ? " error" : ""}`}>
                 {contactHighlight
-                  ? "Local ID is required to update."
+                  ? "Contact ID is required to update."
                   : "Needed when updating a contact."}
               </div>
             </div>
@@ -3765,7 +3842,7 @@ export default function Rolodex() {
         <nav
           className="rolodex-tabs"
           role="tablist"
-          aria-label="Rolodex sections"
+          aria-label="Contact sections"
         >
           {tabs.map((tab) => (
             <button
@@ -4119,22 +4196,15 @@ export default function Rolodex() {
 
           {activePage === "view" && (
             <div role="tabpanel" id="view-panel" aria-labelledby="view-tab">
-              <form className="simple-form" onSubmit={handleSubmit} noValidate>
+              <form
+                id="view-form"
+                className="simple-form"
+                onSubmit={handleSubmit}
+                noValidate
+              >
                 <p className="view-helper">
                   Use the username above to load a contact.
                 </p>
-                <div className="action-row">
-                  <button
-                    type="submit"
-                    value="view"
-                    className="button tertiary load-contacts-button"
-                    disabled={disableSubmit}
-                    aria-busy={loadingAction === "view"}
-                  >
-                    {loadingAction === "view" ? <IconLoader /> : null}
-                    {loadingAction === "view" ? "Loading…" : "Load Contacts"}
-                  </button>
-                </div>
               </form>
             </div>
           )}
@@ -4159,26 +4229,83 @@ export default function Rolodex() {
             </div>
           )}
 
+          {activePage === "search" && (
+            <div role="tabpanel" id="search-panel" aria-labelledby="search-tab">
+              <form
+                className="rolodex-form"
+                id="search-form"
+                onSubmit={handleSubmit}
+                noValidate
+              >
+                <div className="rolodex-form-grid">
+                  <div className={`field${searchKeywordError ? " error" : ""}`}>
+                    <label className="field-label" htmlFor="searchKeyword">
+                      Keyword
+                    </label>
+                    <input
+                      id="searchKeyword"
+                      className="text-input"
+                      value={searchKeyword}
+                      onChange={(event) => {
+                        setSearchKeyword(event.target.value);
+                        if (searchKeywordError) {
+                          setSearchKeywordError("");
+                        }
+                      }}
+                      placeholder="Keyword"
+                    />
+                    <div className={`helper-text${searchKeywordError ? " error" : ""}`}>
+                      {searchKeywordError || "Add a keyword to search."}
+                    </div>
+                  </div>
+
+                  <div className={`field${searchLinkError ? " error" : ""}`}>
+                    <label className="field-label" htmlFor="searchLink">
+                      Link
+                    </label>
+                    <input
+                      id="searchLink"
+                      className="text-input"
+                      value={searchLink}
+                      onChange={(event) => {
+                        setSearchLink(event.target.value);
+                        if (searchLinkError) {
+                          setSearchLinkError("");
+                        }
+                      }}
+                      placeholder="https://example.com"
+                      inputMode="url"
+                    />
+                    <div className={`helper-text${searchLinkError ? " error" : ""}`}>
+                      {searchLinkError || "Optional link to refine the search."}
+                    </div>
+                  </div>
+                </div>
+                <div className="action-row">
+                  <button
+                    type="submit"
+                    value="search"
+                    className="button secondary"
+                    disabled={disableSubmit}
+                    aria-busy={loadingAction === "search"}
+                  >
+                    {loadingAction === "search" ? <IconLoader /> : null}
+                    {loadingAction === "search" ? "Searching…" : "Search"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
           {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
               <div className="recipients-block">
                 <div className="recipients-toolbar">
                   <span id="recipient-label" className="recipients-title">
-                    Contacts
-                  </span>
-                  <div className="recipient-controls">
-                    <button
-                      type="button"
-                      className="button tertiary load-contacts-button"
-                      onClick={handleLoadEmailContacts}
-                      disabled={loadingContacts}
-                      aria-busy={loadingContacts}
-                    >
-                      {loadingContacts ? <IconLoader /> : null}
-                      {loadingContacts ? "Loading…" : "Load Contacts"}
-                    </button>
-                  </div>
-                </div>
+                  Contacts
+                </span>
+                <div className="recipient-controls" />
+              </div>
                 {emailContacts.length === 0 ? (
                   <p className="recipient-placeholder">
                     Load contacts to choose recipients.
