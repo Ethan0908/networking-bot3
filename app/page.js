@@ -54,8 +54,8 @@ export default function HomePage() {
                                             <Image
                                               src="/app-logo.svg"
                                                 alt="Linkmation"
-                                                  width={28}
-                                                    height={28}
+                                                  width={34}
+                                                    height={34}
                                                       priority
                                                         className="lm-logo-icon"
                                                         />
@@ -110,6 +110,7 @@ export default function HomePage() {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         <li>Automations that keep your workflows current</li>
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     </ul>
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               </div>
+
 
           <div className="lm-hero-visual" role="img" aria-label="Linkmation dashboard preview with analytics and automations">
             <div className="lm-hero-card">
@@ -214,7 +215,7 @@ export default function HomePage() {
         <div className="lm-footer-inner">
           <Link href="/" className="lm-logo" aria-label="Linkmation home">
             <Image
-              src="/linkmation-logo.svg"
+              src="/app-logo.svg"
               alt=""
               width={40}
               height={40}
