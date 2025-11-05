@@ -772,7 +772,6 @@ function IconAlert(props) {
 
 export default function Rolodex() {
   const { data: authSession, status: authStatus } = useSession();
-  const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
@@ -804,7 +803,6 @@ export default function Rolodex() {
     email: false,
     profileUrl: false,
   });
-  const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -849,9 +847,6 @@ export default function Rolodex() {
   const [aiResults, setAiResults] = useState([]);
   const [sendResults, setSendResults] = useState([]);
   const [rewriteResponse, setRewriteResponse] = useState(null);
-  const [manualEmailRows, setManualEmailRows] = useState([]);
-  const [responseSending, setResponseSending] = useState({});
-  const [responseBodyEdits, setResponseBodyEdits] = useState({});
   const [sendingDraft, setSendingDraft] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [campaignRole, setCampaignRole] = useState(DEFAULT_TEMPLATE.role);
@@ -870,6 +865,14 @@ export default function Rolodex() {
   const importSubmitResetRef = useRef(null);
   const lastAutoLoadedPageRef = useRef(null);
   const submitActionRef = useRef(null);
+  const previousHasUsernameRef = useRef(hasUsername);
+
+  const sessionEmail = authSession?.user?.email;
+  const username = useMemo(
+    () => (typeof sessionEmail === "string" ? sessionEmail.trim() : ""),
+    [sessionEmail],
+  );
+  const hasUsername = username.length > 0;
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -1125,12 +1128,6 @@ export default function Rolodex() {
       window.localStorage.setItem("rolodex-theme", theme);
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (usernameHighlight && username.trim()) {
-      setUsernameHighlight(false);
-    }
-  }, [usernameHighlight, username]);
 
   useEffect(() => {
     if (contactHighlight && contactId.trim()) {
@@ -2266,21 +2263,7 @@ export default function Rolodex() {
     [aiResults],
   );
 
-  const hasManualRows = manualEmailRows.length > 0;
-
-  const responseEmailRows = useMemo(() => {
-    if (manualEmailRows.length > 0) {
-      return manualEmailRows;
-    }
-    return extractRewriteResponseEmails(rewriteResponse);
-  }, [manualEmailRows, rewriteResponse]);
-
-  const rewriteResponseJson = useMemo(
-    () => (rewriteResponse ? safeStringify(rewriteResponse) : ""),
-    [rewriteResponse],
   );
-
-  const showResponseSection = hasManualRows || Boolean(rewriteResponse);
 
   const templateReady = useMemo(() => {
     const trimmedSubject = subject.trim();
@@ -2333,11 +2316,6 @@ export default function Rolodex() {
       }
     }
   }, [emailContacts, previewContactId, resolveContactId]);
-
-  useEffect(() => {
-    setResponseSending({});
-    setResponseBodyEdits({});
-  }, [manualEmailRows, rewriteResponse]);
 
   const handlePreviewTemplate = useCallback(() => {
     const contactCandidate =
@@ -2501,7 +2479,6 @@ export default function Rolodex() {
           "Failed to generate drafts.";
         throw new Error(message);
       }
-      setManualEmailRows([]);
       const emails = Array.isArray(data?.emails) ? data.emails : [];
       if (emails.length === 0) {
         setAiResults([]);
@@ -2587,141 +2564,6 @@ export default function Rolodex() {
     hasValidToValue,
     invalidToChips,
     pushToast,
-    studentName,
-    studentSchool,
-    subject,
-    toChips,
-  ]);
-
-  const handleBuildTemplateEmails = useCallback(() => {
-    const trimmedSubject = subject.trim();
-    const trimmedBody = emailBody.trim();
-    if (!trimmedSubject) {
-      pushToast("error", "Subject is required before building emails.");
-      return;
-    }
-    if (!trimmedBody) {
-      pushToast("error", "Body is required before building emails.");
-      return;
-    }
-    if (!hasValidToValue || invalidToChips.length > 0) {
-      pushToast("error", "Fix recipient emails before building.");
-      return;
-    }
-    if (!hasValidContactEmail) {
-      pushToast("error", "Load at least one contact with a valid email.");
-      return;
-    }
-
-    const studentContext =
-      studentName || studentSchool
-        ? { name: studentName || null, school: studentSchool || null }
-        : null;
-
-    const results = contactsWithEmails.map((contact, index) => {
-      const normalizedContact = { ...contact };
-      const contactName = resolveContactName(contact);
-      const contactEmail = resolveContactEmail(contact);
-      if (contactName) {
-        if (!normalizedContact.name) {
-          normalizedContact.name = contactName;
-        }
-        if (!normalizedContact.full_name && !normalizedContact.fullName) {
-          normalizedContact.full_name = contactName;
-        }
-      }
-      if (contactEmail && !normalizedContact.email) {
-        normalizedContact.email = contactEmail;
-      }
-      const context = {
-        contact: normalizedContact,
-        company: campaignCompany || null,
-        role: campaignRole || null,
-        student: studentContext,
-      };
-      const toValue = toChips
-        .map((chip) => {
-          if (!chip) {
-            return "";
-          }
-          if (chip === "{{contact.email}}") {
-            return contactEmail || "";
-          }
-          if (chip.includes("{{")) {
-            return replaceTemplateTokens(chip, context, {
-              preserveDraft: false,
-              draftReplacement: "",
-            });
-          }
-          return chip;
-        })
-        .map((value) => (value ? value.trim() : ""))
-        .filter((value) => value.length > 0)
-        .join(", ");
-      const resolvedSubject = replaceTemplateTokens(trimmedSubject, context, {
-        preserveDraft: true,
-      });
-      const resolvedBody = replaceTemplateTokens(trimmedBody, context, {
-        preserveDraft: false,
-        draftReplacement: "",
-      });
-      const rawContactId =
-        contact.__contactId || resolveContactId(contact) || index;
-      const resultId = `manual-${rawContactId}`;
-      return {
-        id: resultId,
-        to: toValue || contactEmail || "",
-        subject: resolvedSubject,
-        body: resolvedBody,
-        excluded: false,
-        isEditing: false,
-      };
-    });
-
-    setManualEmailRows([]);
-    if (results.length === 0) {
-      pushToast("info", "Load at least one contact with a valid email.");
-      return;
-    }
-
-    const manualRows = results.map((item) => {
-      const emailValue = item.to ?? "";
-      const subjectValue = item.subject ?? "";
-      const bodyValue = item.body ?? "";
-      return {
-        email: emailValue,
-        subject: subjectValue,
-        body: bodyValue,
-        json: {
-          to: emailValue,
-          subject: subjectValue,
-          body: bodyValue,
-        },
-      };
-    });
-
-    setRewriteResponse(null);
-    setManualEmailRows([]);
-    setManualEmailRows(manualRows);
-    setAiResults([]);
-    setSendResults([]);
-    setSendingDraft(null);
-    pushToast(
-      "success",
-      `Prepared ${results.length} email${results.length === 1 ? "" : "s"} from your template.`,
-    );
-  }, [
-    campaignCompany,
-    campaignRole,
-    contactsWithEmails,
-    emailBody,
-    hasValidContactEmail,
-    hasValidToValue,
-    invalidToChips,
-    pushToast,
-    resolveContactEmail,
-    resolveContactId,
-    resolveContactName,
     studentName,
     studentSchool,
     subject,
@@ -2906,67 +2748,6 @@ export default function Rolodex() {
     [aiResults, gmailStatus, pushToast],
   );
 
-  const handleSendResponseRow = useCallback(
-    async (index) => {
-      const row = responseEmailRows[index];
-      if (!row) {
-        pushToast("error", "Unable to locate this response.");
-        return;
-      }
-      const recipient = (row.email || "").trim();
-      if (!recipient) {
-        pushToast("error", "This response does not include an email address.");
-        return;
-      }
-      const subjectValue = String(row.subject ?? "");
-      const bodySource = row.body ?? row.json ?? "";
-      const originalBody =
-        typeof bodySource === "string"
-          ? bodySource
-          : bodySource != null
-            ? String(bodySource)
-            : "";
-      const bodyValue = responseBodyEdits[index] ?? originalBody;
-      setResponseSending((prev) => ({ ...prev, [index]: true }));
-      try {
-        const response = await fetch("/api/send-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: recipient,
-            subject: subjectValue,
-            html: bodyValue,
-          }),
-        });
-        let errorMessage = "";
-        if (!response.ok) {
-          try {
-            const payload = await response.json();
-            if (payload && typeof payload === "object" && payload.error) {
-              errorMessage = String(payload.error);
-            }
-          } catch {
-            errorMessage = response.statusText || "Failed to send email.";
-          }
-          throw new Error(errorMessage || "Failed to send email.");
-        }
-        pushToast("success", `Email sent to ${recipient}.`);
-      } catch (error) {
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : "Failed to send email.";
-        pushToast("error", message);
-      } finally {
-        setResponseSending((prev) => {
-          const next = { ...prev };
-          delete next[index];
-          return next;
-        });
-      }
-    },
-    [pushToast, responseBodyEdits, responseEmailRows],
-  );
 
   const handleDownloadResults = useCallback(
     (format) => {
@@ -3036,13 +2817,12 @@ export default function Rolodex() {
       clearImportSubmitReset();
       setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
-      setUsernameHighlight(false);
       setContactHighlight(false);
       setCsvImportError("");
       setSearchKeywordError("");
       setSearchLinkError("");
 
-      const trimmedUsernameValue = username.trim();
+      const trimmedUsernameValue = username;
       const trimmedContactId = contactId.trim();
       const trimmedProfileUrlValue = profileUrl.trim();
       const trimmedSearchKeyword = searchKeyword.trim();
@@ -3084,10 +2864,17 @@ export default function Rolodex() {
       }
 
       if (action === "view" && !trimmedUsernameValue) {
-        const message = "Username is required to view a contact.";
-        setErrorMessage(message);
-        pushToast("error", message);
-        setUsernameHighlight(true);
+        const sampleContact = {
+          ...SAMPLE_CONTACT_RECORD,
+          __contactId: SAMPLE_CONTACT_ID,
+        };
+        setEmailContacts([sampleContact]);
+        setIsSampleEmailContacts(true);
+        setEmailRecipients([]);
+        setEmailSearchTerm("");
+        setEmailPageIndex(0);
+        setPreviewContactId(SAMPLE_CONTACT_ID);
+        setPreviewContent(null);
         setLoadingAction(null);
         return;
       }
@@ -3316,6 +3103,18 @@ export default function Rolodex() {
   useEffect(() => {
     submitActionRef.current = submitAction;
   }, [submitAction]);
+
+  useEffect(() => {
+    if (
+      hasUsername &&
+      !previousHasUsernameRef.current &&
+      (activePage === "view" || activePage === "email") &&
+      submitActionRef.current
+    ) {
+      void submitActionRef.current("view");
+    }
+    previousHasUsernameRef.current = hasUsername;
+  }, [activePage, hasUsername]);
 
   useEffect(() => {
     if (activePage === "view" || activePage === "email") {
@@ -3820,24 +3619,15 @@ export default function Rolodex() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <div className="field-input-row">
-                <input
-                id="username"
-                className="text-input"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Username"
-                autoComplete="off"
-              />
+            <div className="field account-field">
+              <span className="field-label">Account</span>
+              <div className="account-value" aria-live="polite">
+                {hasUsername ? username : "Not signed in"}
               </div>
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Used to look up contacts across every tab."}
+              <div className="helper-text">
+                {hasUsername
+                  ? "Contacts load automatically with this email."
+                  : "Sample contacts are shown until you connect Gmail."}
               </div>
             </div>
 
@@ -4254,7 +4044,9 @@ export default function Rolodex() {
                 noValidate
               >
                 <p className="view-helper">
-                  Use the username above to load a contact.
+                  {hasUsername
+                    ? "Contacts load automatically with your email. Use refresh to sync again."
+                    : "Sign in to load real contacts. Sample data is shown until then."}
                 </p>
               </form>
             </div>
@@ -4355,22 +4147,6 @@ export default function Rolodex() {
                 <span id="recipient-label" className="recipients-title">
                   Contacts
                 </span>
-                <div className="recipient-controls">
-                  <button
-                    type="button"
-                    className="table-refresh-button"
-                    onClick={handleRefreshView}
-                    disabled={loadingAction === "view"}
-                    aria-label="Refresh contacts"
-                  >
-                    {loadingAction === "view" ? (
-                      <IconLoader className="refresh-spinner" />
-                    ) : (
-                      <IconRefresh />
-                    )}
-                    <span className="visually-hidden">Refresh contacts</span>
-                  </button>
-                </div>
               </div>
                 {emailContacts.length === 0 ? (
                   <p className="recipient-placeholder">
@@ -4909,14 +4685,6 @@ export default function Rolodex() {
                     </button>
                     <button
                       type="button"
-                      className="button secondary"
-                      onClick={handleBuildTemplateEmails}
-                      disabled={!canBuildTemplate}
-                    >
-                      Edit manually
-                    </button>
-                    <button
-                      type="button"
                       className="button"
                       onClick={handleGenerateEmails}
                       disabled={!canGenerate}
@@ -4959,151 +4727,9 @@ export default function Rolodex() {
                     </pre>
                   </div>
                 )}
-                {showResponseSection && (
-                  <div className="preview-response" aria-live="polite">
-                    <div className="preview-response-toolbar">
-                      <span className="preview-response-title">Response</span>
-                    </div>
-                    {responseEmailRows.length > 0 ? (
-                      <div
-                        className="table-scroll preview-response-scroll"
-                        role="group"
-                        aria-label="Response"
-                      >
-                        <table className="view-table preview-response-table">
-                          <thead>
-                            <tr>
-                              <th
-                                scope="col"
-                                className="preview-response-index-header"
-                              >
-                                #
-                              </th>
-                              <th scope="col">Email</th>
-                              <th scope="col">Subject</th>
-                              <th scope="col">Body</th>
-                              <th
-                                scope="col"
-                                className="preview-response-actions-header"
-                              >
-                                Send
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {responseEmailRows.map((row, index) => {
-                              const rowKey = row.path
-                                ? `${row.path}-${index}`
-                                : index;
-                              const recipientValue =
-                                typeof row.email === "string"
-                                  ? row.email.trim()
-                                  : row.email != null
-                                    ? String(row.email)
-                                    : "";
-                              const subjectValue =
-                                typeof row.subject === "string"
-                                  ? row.subject
-                                  : row.subject != null
-                                    ? String(row.subject)
-                                    : "";
-                              const bodySource = row.body ?? row.json ?? "";
-                              const originalBodyValue =
-                                typeof bodySource === "string"
-                                  ? bodySource
-                                  : bodySource != null
-                                    ? String(bodySource)
-                                    : "";
-                              const editedBodyValue = responseBodyEdits[index];
-                              const bodyValue =
-                                typeof editedBodyValue === "string"
-                                  ? editedBodyValue
-                                  : originalBodyValue;
-                              const hasRecipient = recipientValue.length > 0;
-                              const isSendingRow = Boolean(
-                                responseSending[index],
-                              );
-                              const sendDisabled =
-                                isSendingRow || !hasRecipient;
-                              const buttonTitle = hasRecipient
-                                ? undefined
-                                : "Response is missing an email address.";
-                              return (
-                                <tr key={rowKey}>
-                                  <td className="preview-response-index">
-                                    {index + 1}
-                                  </td>
-                                  <td className="preview-response-email">
-                                    {recipientValue || "—"}
-                                  </td>
-                                  <td className="preview-response-subject">
-                                    {subjectValue || "—"}
-                                  </td>
-                                  <td className="preview-response-body">
-                                    <textarea
-                                      className="preview-response-body-input"
-                                      value={bodyValue}
-                                      aria-label={
-                                        subjectValue
-                                          ? `Email body for ${subjectValue}`
-                                          : `Email body for response ${index + 1}`
-                                      }
-                                      onChange={(event) => {
-                                        const nextValue = event.target.value;
-                                        setResponseBodyEdits((prev) => {
-                                          if (nextValue === originalBodyValue) {
-                                            if (!(index in prev)) {
-                                              return prev;
-                                            }
-                                            const next = { ...prev };
-                                            delete next[index];
-                                            return next;
-                                          }
-                                          return {
-                                            ...prev,
-                                            [index]: nextValue,
-                                          };
-                                        });
-                                      }}
-                                      placeholder="Response body"
-                                    />
-                                  </td>
-                                  <td className="preview-response-send-cell">
-                                    <button
-                                      type="button"
-                                      className="button secondary small preview-response-send-button"
-                                      onClick={() =>
-                                        handleSendResponseRow(index)
-                                      }
-                                      disabled={sendDisabled}
-                                      aria-busy={isSendingRow}
-                                      title={buttonTitle}
-                                    >
-                                      {isSendingRow ? (
-                                        <IconLoader />
-                                      ) : (
-                                        <IconMail className="preview-response-send-icon" />
-                                      )}
-                                      {isSendingRow ? "Sending…" : "Send"}
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          }
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : rewriteResponse ? (
-                      <div className="preview-response-empty">
-                        No formatted responses available yet.
-                      </div>
-                    ) : null}
-                  </div>
-                )}
               </div>
 
-              {!hasManualRows && aiResults.length > 0 && (
+              {aiResults.length > 0 && (
                 <div className="ai-results-panel">
                   <div className="ai-results-header">
                     <h3>AI Results</h3>
