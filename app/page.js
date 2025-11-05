@@ -50,7 +50,7 @@ export default function HomePage() {
         <>
               <header className="lm-header">
                       <nav className="lm-nav" aria-label="Main">
-                                <Link href="/" className="lm-logo inline-flex items-center gap-1.5" aria-label="Linkmation home">
+                                <Link href="/" className="lm-logo-icon mr-1 align-middle" aria-label="Linkmation home">
                                             <Image
                                               src="/app-logo.png"
                                                 alt="Linkmation"
@@ -213,7 +213,7 @@ export default function HomePage() {
 
       <footer className="lm-footer">
         <div className="lm-footer-inner">
-          <Link href="/" className="lm-logo" aria-label="Linkmation home">
+          <Link href="/" className="lm-logo-icon mr-1 align-middle" aria-label="Linkmation home">
             <Image
               src="/app-logo.png"
               alt=""
