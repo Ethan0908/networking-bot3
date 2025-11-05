@@ -230,7 +230,7 @@ export default function HomePage() {
             <a href="https://linkmation.me/terms" target="_blank" rel="noreferrer">
               Terms of Service
             </a>
-            <a href="mailto:support@linkmation.me">support@linkmation.me</a>
+            <a href="mailto:ethanyubowang@gmail.com">ethanyubowang@gmail.com</a>
           </div>
           <p className="lm-footer-copy">© 2025 Linkmation. All rights reserved. Proudly built in Canada.</p>
         </div>
