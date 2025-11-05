@@ -75,6 +75,19 @@ footer {
   color: var(--lm-primary);
 }
 
+/* Header logo wordmark: match requested brand typography */
+.lm-header .lm-logo-wordmark {
+  font-family: Inter, Roboto, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  font-size: 17.6px; /* precise size requested */
+  font-weight: 700;
+  font-style: normal;
+  color: rgb(31, 111, 235);
+  text-align: start;
+  text-transform: none;
+  line-height: normal;
+  letter-spacing: 0.176px;
+}
+
 .lm-logo-icon {
   font-size: 1.4rem;
 }
