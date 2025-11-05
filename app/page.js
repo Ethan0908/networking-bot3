@@ -50,12 +50,12 @@ export default function HomePage() {
         <>
               <header className="lm-header">
                       <nav className="lm-nav" aria-label="Main">
-                                <Link href="/" className="lm-logo" aria-label="Linkmation home">
+                                <Link href="/" className="lm-logo inline-flex items-center gap-1.5" aria-label="Linkmation home">
                                             <Image
                                               src="/app-logo.png"
                                                 alt="Linkmation"
-                                                  width={34}
-                                                    height={34}
+                                                  width={40}
+                                                    height={40}
                                                       priority
                                                         className="lm-logo-icon"
                                                         />
@@ -220,6 +220,7 @@ export default function HomePage() {
               width={40}
               height={40}
               className="lm-logo-icon"
+              style={{ marginRight: 6, verticalAlign: 'middle' }}
             />
             <span className="lm-logo-wordmark">Linkmation</span>
           </Link>
