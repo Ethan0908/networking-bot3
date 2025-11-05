@@ -422,16 +422,6 @@ html.theme-dark {
   flex: 1 1 auto;
 }
 
-.field-inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.field-inline-actions .button {
-  white-space: nowrap;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -444,13 +434,65 @@ html.theme-dark {
   border: 0;
 }
 
+.rolodex-tabs-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.tab-menu-toggle {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tab-menu-toggle.open {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: var(--text-primary);
+}
+
+.tab-menu-toggle:hover,
+.tab-menu-toggle:focus-visible {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.tab-menu-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.tab-menu-label {
+  font-size: 0.9rem;
+}
+
 .rolodex-tabs {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 8px;
 }
 
 .tab-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 9px 16px;
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -476,6 +518,41 @@ html.theme-dark {
   background: rgba(37, 99, 235, 0.16);
   border-color: rgba(37, 99, 235, 0.45);
   color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .rolodex-tabs-wrapper {
+    align-items: stretch;
+  }
+
+  .tab-menu-toggle {
+    display: inline-flex;
+  }
+
+  .rolodex-tabs {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--card-background);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: var(--shadow-sm);
+    display: none;
+    z-index: 10;
+    min-width: 200px;
+  }
+
+  .rolodex-tabs-wrapper.open .rolodex-tabs {
+    display: flex;
+  }
+
+  .tab-button {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .tab-panel {
@@ -546,10 +623,6 @@ html.theme-dark {
 .select-all-label {
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.load-contacts-button {
-  min-width: 150px;
 }
 
 .recipient-placeholder {
@@ -738,6 +811,49 @@ html.theme-dark {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.table-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.table-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.table-refresh-button:hover,
+.table-refresh-button:focus-visible {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.table-refresh-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.table-refresh-button .loader {
+  width: 18px;
+  height: 18px;
 }
 
 .table-search {
@@ -1442,9 +1558,6 @@ html.theme-dark {
   }
   .recipient-controls {
     margin-left: 0;
-  }
-  .load-contacts-button {
-    width: 100%;
   }
 }
 
