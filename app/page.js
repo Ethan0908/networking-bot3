@@ -52,7 +52,7 @@ export default function HomePage() {
                       <nav className="lm-nav" aria-label="Main">
                                 <Link href="/" className="lm-logo" aria-label="Linkmation home">
                                             <Image
-                                              src="/app-logo.svg"
+                                              src="/app-logo.png"
                                                 alt="Linkmation"
                                                   width={34}
                                                     height={34}
@@ -215,7 +215,7 @@ export default function HomePage() {
         <div className="lm-footer-inner">
           <Link href="/" className="lm-logo" aria-label="Linkmation home">
             <Image
-              src="/app-logo.svg"
+              src="/app-logo.png"
               alt=""
               width={40}
               height={40}
