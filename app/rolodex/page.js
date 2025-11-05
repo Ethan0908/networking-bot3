@@ -1,4 +1,7 @@
 "use client";
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoverLetterWorkspace } from "../cover-letter/workspace";
