@@ -2263,8 +2263,6 @@ export default function Rolodex() {
     [aiResults],
   );
 
-  );
-
   const templateReady = useMemo(() => {
     const trimmedSubject = subject.trim();
     const trimmedBody = emailBody.trim();
