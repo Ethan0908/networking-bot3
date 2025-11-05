@@ -82,6 +82,49 @@ function IconCopy(props) {
   );
 }
 
+function IconRefresh(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" />
+      <path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14" />
+    </svg>
+  );
+}
+
+function IconMenu(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+    >
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+    </svg>
+  );
+}
+
 const TOAST_TIMEOUT = 4500;
 
 const EMAIL_REGEX = /.+@.+\..+/;
@@ -750,6 +793,7 @@ export default function Rolodex() {
   );
   const [toasts, setToasts] = useState([]);
   const [activePage, setActivePage] = useState("create");
+  const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
   const [lastAction, setLastAction] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({
@@ -772,7 +816,6 @@ export default function Rolodex() {
   ]);
   const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
   const [emailRecipients, setEmailRecipients] = useState([]);
-  const [loadingContacts, setLoadingContacts] = useState(false);
   const [csvFileContent, setCsvFileContent] = useState("");
   const [csvFileName, setCsvFileName] = useState("");
   const [csvFileInputKey, setCsvFileInputKey] = useState(0);
@@ -825,6 +868,8 @@ export default function Rolodex() {
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
+  const lastAutoLoadedPageRef = useRef(null);
+  const submitActionRef = useRef(null);
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -1043,7 +1088,6 @@ export default function Rolodex() {
   );
 
   const disableSubmit = Boolean(loadingAction);
-  const showContactIdField = activePage === "update";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1399,65 +1443,15 @@ export default function Rolodex() {
     [resolveContactId],
   );
 
-  const handleLoadEmailContacts = useCallback(async () => {
-    const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
-      const messageText = "Username is required to load contacts.";
-      setUsernameHighlight(true);
-      pushToast("error", messageText);
-      return;
-    }
-    setLoadingContacts(true);
-    try {
-      const r = await fetch("/api/rolodex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "view", username: trimmedUsername }),
-      });
-      const text = await r.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch {
-        data = null;
-      }
-      if (!r.ok) {
-        const messageText =
-          (data && typeof data === "object" && "error" in data && data.error) ||
-          r.statusText ||
-          "Failed to load contacts";
-        throw new Error(messageText);
-      }
-      const records = Array.isArray(data) ? data : data ? [data] : [];
-      const normalized = records
+  const normalizeEmailContacts = useCallback(
+    (records) => {
+      return records
         .filter((record) => record && typeof record === "object")
         .map((record) => ({ ...record, __contactId: resolveContactId(record) }))
         .filter((record) => record.__contactId);
-      if (normalized.length > 0) {
-        setEmailContacts(normalized);
-        setPreviewContactId(normalized[0]?.__contactId || "");
-      } else {
-        setEmailContacts([]);
-        setPreviewContactId("");
-      }
-      setPreviewContent(null);
-      setEmailRecipients([]);
-      setIsSampleEmailContacts(false);
-      setEmailSearchTerm("");
-      if (normalized.length === 0) {
-        pushToast("info", "No contacts found for this username.");
-      } else {
-        pushToast("success", "Contacts loaded for emailing.");
-      }
-    } catch (error) {
-      const messageText =
-        error instanceof Error ? error.message : "Failed to load contacts";
-      pushToast("error", messageText);
-    } finally {
-      setLoadingContacts(false);
-    }
-    setEmailPageIndex(0);
-  }, [pushToast, resolveContactId, setEmailSearchTerm, username]);
+    },
+    [resolveContactId],
+  );
 
   const handleCsvFileChange = useCallback(
     (event) => {
@@ -3030,10 +3024,8 @@ export default function Rolodex() {
     setErrorMessage("");
   }, []);
 
-  const handleSubmit = useCallback(
-    async (event) => {
-      event.preventDefault();
-      const action = event.nativeEvent.submitter?.value;
+  const submitAction = useCallback(
+    async (action) => {
       if (!action) {
         setErrorMessage("Unknown action");
         pushToast("error", "Unknown action");
@@ -3219,6 +3211,7 @@ export default function Rolodex() {
           throw new Error(messageText);
         }
         setResponse(data ?? { success: true });
+        const records = Array.isArray(data) ? data : data ? [data] : [];
         if (action === "import") {
           const normalized = normalizeImportPayload(data);
           setImportResults(normalized);
@@ -3232,10 +3225,25 @@ export default function Rolodex() {
         } else if (action === "update") {
           pushToast("success", "Contact updated.");
         } else if (action === "view") {
-          if (!data || (Array.isArray(data) && data.length === 0)) {
+          const normalizedContacts = normalizeEmailContacts(records);
+          if (normalizedContacts.length > 0) {
+            setEmailContacts(normalizedContacts);
+            setPreviewContactId(normalizedContacts[0]?.__contactId || "");
+            setIsSampleEmailContacts(false);
+          } else {
+            setEmailContacts([]);
+            setPreviewContactId("");
+            setIsSampleEmailContacts(false);
+          }
+          setPreviewContent(null);
+          setEmailRecipients([]);
+          setEmailSearchTerm("");
+          setEmailPageIndex(0);
+          if (records.length === 0) {
+            setInlineSummary("");
             pushToast("info", "0 results found.");
           } else {
-            const record = Array.isArray(data) ? data[0] : data;
+            const record = records[0];
             setInlineSummary(formatSummary(record));
             pushToast("success", "Contact loaded.");
           }
@@ -3280,6 +3288,7 @@ export default function Rolodex() {
       email,
       fullName,
       location,
+      normalizeEmailContacts,
       normalizeImportPayload,
       profileUrl,
       pushToast,
@@ -3290,6 +3299,40 @@ export default function Rolodex() {
       username,
     ],
   );
+
+  const handleSubmit = useCallback(
+    (event) => {
+      event.preventDefault();
+      const action = event.nativeEvent.submitter?.value;
+      if (submitActionRef.current) {
+        void submitActionRef.current(action);
+      } else {
+        void submitAction(action);
+      }
+    },
+    [submitAction],
+  );
+
+  useEffect(() => {
+    submitActionRef.current = submitAction;
+  }, [submitAction]);
+
+  useEffect(() => {
+    if (activePage === "view" || activePage === "email") {
+      if (lastAutoLoadedPageRef.current !== activePage) {
+        lastAutoLoadedPageRef.current = activePage;
+        if (submitActionRef.current) {
+          void submitActionRef.current("view");
+        }
+      }
+    } else {
+      lastAutoLoadedPageRef.current = null;
+    }
+  }, [activePage]);
+
+  useEffect(() => {
+    setTabsMenuOpen(false);
+  }, [activePage]);
 
   const gmailLabel = useMemo(() => {
     if (gmailStatus === "connected") return "Gmail Connected";
@@ -3304,6 +3347,39 @@ export default function Rolodex() {
 
   const contactDetailFields = (
     <>
+      {activePage === "update" && (
+        <div
+          className={`field contact-id-field${contactHighlight ? " error" : ""}`}
+        >
+          <label className="field-label" htmlFor="contactId">
+            Contact ID
+          </label>
+          <input
+            id="contactId"
+            className="text-input"
+            value={contactId}
+            onChange={(event) => setContactId(event.target.value)}
+            placeholder="Contact ID"
+            autoComplete="off"
+          />
+          {contactId.trim() && (
+            <button
+              type="button"
+              className="copy-button"
+              onClick={handleCopyContactId}
+              aria-label="Copy contact ID"
+            >
+              <IconCopy />
+            </button>
+          )}
+          <div className={`helper-text${contactHighlight ? " error" : ""}`}>
+            {contactHighlight
+              ? "Contact ID is required to update."
+              : "Needed when updating a contact."}
+          </div>
+        </div>
+      )}
+
       <div className="field">
         <label className="field-label" htmlFor="fullName">
           Full Name
@@ -3424,15 +3500,36 @@ export default function Rolodex() {
     </>
   );
 
-  const tabs = [
-    { id: "create", label: "Create" },
-    { id: "search", label: "Search" },
-    { id: "import", label: "Import" },
-    { id: "view", label: "View" },
-    { id: "update", label: "Update" },
-    { id: "email", label: "Email" },
-    { id: "cover", label: "Cover letter" },
-  ];
+  const tabs = useMemo(
+    () => [
+      { id: "create", label: "Create" },
+      { id: "search", label: "Search" },
+      { id: "import", label: "Import" },
+      { id: "view", label: "View" },
+      { id: "update", label: "Update" },
+      { id: "email", label: "Email" },
+      { id: "cover", label: "Cover letter" },
+    ],
+    [],
+  );
+
+  const activeTabLabel = useMemo(() => {
+    const current = tabs.find((tab) => tab.id === activePage);
+    return current ? current.label : "Menu";
+  }, [activePage, tabs]);
+
+  const handleTabSelect = useCallback((tabId) => {
+    setActivePage(tabId);
+    setTabsMenuOpen(false);
+  }, []);
+
+  const handleRefreshView = useCallback(() => {
+    if (submitActionRef.current) {
+      void submitActionRef.current("view");
+    } else {
+      void submitAction("view");
+    }
+  }, [submitAction]);
 
   const viewColumns = useMemo(
     () => [
@@ -3736,35 +3833,6 @@ export default function Rolodex() {
                 placeholder="Username"
                 autoComplete="off"
               />
-              {(activePage === "view" || activePage === "email") && (
-                <div className="field-inline-actions">
-                  {activePage === "view" && (
-                    <button
-                      type="submit"
-                      form="view-form"
-                      value="view"
-                      className="button tertiary load-contacts-button"
-                      disabled={disableSubmit}
-                      aria-busy={loadingAction === "view"}
-                    >
-                      {loadingAction === "view" ? <IconLoader /> : null}
-                      {loadingAction === "view" ? "Loading…" : "Load Contacts"}
-                    </button>
-                  )}
-                  {activePage === "email" && (
-                    <button
-                      type="button"
-                      className="button tertiary load-contacts-button"
-                      onClick={handleLoadEmailContacts}
-                      disabled={loadingContacts}
-                      aria-busy={loadingContacts}
-                    >
-                      {loadingContacts ? <IconLoader /> : null}
-                      {loadingContacts ? "Loading…" : "Load Contacts"}
-                    </button>
-                  )}
-                </div>
-              )}
               </div>
               <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
                 {usernameHighlight
@@ -3807,59 +3875,42 @@ export default function Rolodex() {
               </button>
             </div>
           </div>
-          {showContactIdField && (
-            <div className={`field contact-id-field${contactHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="contactId">
-                Contact ID
-              </label>
-              <input
-                id="contactId"
-                className="text-input"
-                value={contactId}
-                onChange={(event) => setContactId(event.target.value)}
-                placeholder="Contact ID"
-                autoComplete="off"
-              />
-              {contactId.trim() && (
-                <button
-                  type="button"
-                  className="copy-button"
-                  onClick={handleCopyContactId}
-                  aria-label="Copy contact ID"
-                >
-                  <IconCopy />
-                </button>
-              )}
-              <div className={`helper-text${contactHighlight ? " error" : ""}`}>
-                {contactHighlight
-                  ? "Contact ID is required to update."
-                  : "Needed when updating a contact."}
-              </div>
-            </div>
-          )}
         </div>
 
-        <nav
-          className="rolodex-tabs"
-          role="tablist"
-          aria-label="Contact sections"
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`${tab.id}-tab`}
-              aria-controls={`${tab.id}-panel`}
-              aria-selected={activePage === tab.id}
-              className={`tab-button${activePage === tab.id ? " active" : ""}`}
-              onClick={() => setActivePage(tab.id)}
-              tabIndex={activePage === tab.id ? 0 : -1}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <div className="tabs-bar">
+          <button
+            type="button"
+            className={`tab-menu-toggle${tabsMenuOpen ? " open" : ""}`}
+            onClick={() => setTabsMenuOpen((prev) => !prev)}
+            aria-expanded={tabsMenuOpen}
+            aria-controls="rolodex-tablist"
+          >
+            <IconMenu className="tab-menu-icon" />
+            <span>{activeTabLabel}</span>
+          </button>
+          <nav
+            id="rolodex-tablist"
+            className={`rolodex-tabs${tabsMenuOpen ? " open" : ""}`}
+            role="tablist"
+            aria-label="Contact sections"
+          >
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`${tab.id}-tab`}
+                aria-controls={`${tab.id}-panel`}
+                aria-selected={activePage === tab.id}
+                className={`tab-button${activePage === tab.id ? " active" : ""}`}
+                onClick={() => handleTabSelect(tab.id)}
+                tabIndex={activePage === tab.id ? 0 : -1}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
 
         <div className="tab-panel">
           {activePage === "create" && (
@@ -4217,7 +4268,7 @@ export default function Rolodex() {
                   <button
                     type="submit"
                     value="update"
-                    className="button secondary"
+                    className="button"
                     disabled={disableSubmit}
                     aria-busy={loadingAction === "update"}
                   >
@@ -4300,11 +4351,26 @@ export default function Rolodex() {
           {activePage === "email" && (
             <div role="tabpanel" id="email-panel" aria-labelledby="email-tab">
               <div className="recipients-block">
-                <div className="recipients-toolbar">
-                  <span id="recipient-label" className="recipients-title">
+              <div className="recipients-toolbar">
+                <span id="recipient-label" className="recipients-title">
                   Contacts
                 </span>
-                <div className="recipient-controls" />
+                <div className="recipient-controls">
+                  <button
+                    type="button"
+                    className="table-refresh-button"
+                    onClick={handleRefreshView}
+                    disabled={loadingAction === "view"}
+                    aria-label="Refresh contacts"
+                  >
+                    {loadingAction === "view" ? (
+                      <IconLoader className="refresh-spinner" />
+                    ) : (
+                      <IconRefresh />
+                    )}
+                    <span className="visually-hidden">Refresh contacts</span>
+                  </button>
+                </div>
               </div>
                 {emailContacts.length === 0 ? (
                   <p className="recipient-placeholder">
@@ -4326,26 +4392,42 @@ export default function Rolodex() {
                           placeholder="Search contacts"
                         />
                       </div>
-                      <div className="table-page-size">
-                        <label htmlFor="emailPageSize">Rows per page</label>
-                        <select
-                          id="emailPageSize"
-                          value={emailResolvedPageSize}
-                          onChange={(event) => {
-                            const next = Number(event.target.value);
-                            setEmailPageSize(
-                              Number.isNaN(next) || next <= 0
-                                ? TABLE_PAGE_SIZES[0]
-                                : next,
-                            );
-                          }}
+                      <div className="table-toolbar-controls">
+                        <div className="table-page-size">
+                          <label htmlFor="emailPageSize">Rows per page</label>
+                          <select
+                            id="emailPageSize"
+                            value={emailResolvedPageSize}
+                            onChange={(event) => {
+                              const next = Number(event.target.value);
+                              setEmailPageSize(
+                                Number.isNaN(next) || next <= 0
+                                  ? TABLE_PAGE_SIZES[0]
+                                  : next,
+                              );
+                            }}
+                          >
+                            {TABLE_PAGE_SIZES.map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          className="table-refresh-button"
+                          onClick={handleRefreshView}
+                          disabled={loadingAction === "view"}
+                          aria-label="Refresh contacts"
                         >
-                          {TABLE_PAGE_SIZES.map((size) => (
-                            <option key={size} value={size}>
-                              {size}
-                            </option>
-                          ))}
-                        </select>
+                          {loadingAction === "view" ? (
+                            <IconLoader className="refresh-spinner" />
+                          ) : (
+                            <IconRefresh />
+                          )}
+                          <span className="visually-hidden">Refresh contacts</span>
+                        </button>
                       </div>
                     </div>
                     <div
@@ -5273,26 +5355,42 @@ export default function Rolodex() {
                     placeholder="Search contacts"
                   />
                 </div>
-                <div className="table-page-size">
-                  <label htmlFor="viewPageSize">Rows per page</label>
-                  <select
-                    id="viewPageSize"
-                    value={viewResolvedPageSize}
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      setViewPageSize(
-                        Number.isNaN(next) || next <= 0
-                          ? TABLE_PAGE_SIZES[0]
-                          : next,
-                      );
-                    }}
+                <div className="table-toolbar-controls">
+                  <div className="table-page-size">
+                    <label htmlFor="viewPageSize">Rows per page</label>
+                    <select
+                      id="viewPageSize"
+                      value={viewResolvedPageSize}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setViewPageSize(
+                          Number.isNaN(next) || next <= 0
+                            ? TABLE_PAGE_SIZES[0]
+                            : next,
+                        );
+                      }}
+                    >
+                      {TABLE_PAGE_SIZES.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="table-refresh-button"
+                    onClick={handleRefreshView}
+                    disabled={loadingAction === "view"}
+                    aria-label="Refresh contacts"
                   >
-                    {TABLE_PAGE_SIZES.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
+                    {loadingAction === "view" ? (
+                      <IconLoader className="refresh-spinner" />
+                    ) : (
+                      <IconRefresh />
+                    )}
+                    <span className="visually-hidden">Refresh contacts</span>
+                  </button>
                 </div>
               </div>
               <div className="table-scroll">
