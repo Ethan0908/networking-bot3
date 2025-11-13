@@ -868,6 +868,7 @@ export default function Rolodex() {
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
+  const gmailProfileSyncRef = useRef(false);
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -881,6 +882,57 @@ export default function Rolodex() {
       clearImportSubmitReset();
     };
   }, [clearImportSubmitReset]);
+
+  useEffect(() => {
+    if (gmailStatus === "disconnected") {
+      gmailProfileSyncRef.current = false;
+      if (!authSession?.user?.email) {
+        setUsername("");
+      }
+    }
+  }, [authSession?.user?.email, gmailStatus]);
+
+  useEffect(() => {
+    if (gmailStatus !== "connected" || gmailProfileSyncRef.current) {
+      return;
+    }
+
+    let isActive = true;
+    gmailProfileSyncRef.current = true;
+
+    const syncUsername = async () => {
+      try {
+        const response = await fetch("/api/gmail/profile");
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        const emailAddress = data?.email;
+        if (isActive && emailAddress) {
+          setUsername(emailAddress);
+          setUsernameHighlight(false);
+        }
+      } catch (error) {
+        console.error("Failed to sync Gmail username", error);
+        if (!isActive) {
+          return;
+        }
+        const fallbackEmail = authSession?.user?.email;
+        if (fallbackEmail) {
+          setUsername(fallbackEmail);
+          setUsernameHighlight(false);
+          return;
+        }
+        pushToast("error", "Unable to sync Gmail username automatically.");
+      }
+    };
+
+    syncUsername();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authSession?.user?.email, gmailStatus, pushToast]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3823,15 +3875,30 @@ export default function Rolodex() {
                   id="username"
                   className="text-input"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Username"
+                  onChange={(event) => {
+                    if (gmailStatus === "connected") {
+                      return;
+                    }
+                    setUsername(event.target.value);
+                  }}
+                  placeholder={
+                    gmailStatus === "connected"
+                      ? username
+                        ? undefined
+                        : "Loading Gmail address…"
+                      : "Username"
+                  }
                   autoComplete="off"
+                  readOnly={gmailStatus === "connected"}
+                  aria-readonly={gmailStatus === "connected"}
                 />
               </div>
               <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Contacts load automatically on the View and Email tabs."}
+                {gmailStatus === "connected"
+                  ? "Your Gmail address is used automatically."
+                  : usernameHighlight
+                    ? "Username is required to view a contact."
+                    : "Contacts load automatically on the View and Email tabs."}
               </div>
             </div>
 
