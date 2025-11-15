@@ -871,6 +871,7 @@ export default function Rolodex() {
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
+  const tabsWrapperRef = useRef(null);
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -3772,6 +3773,40 @@ export default function Rolodex() {
     setIsMobileTabsOpen(false);
   }, [activePage]);
 
+  useEffect(() => {
+    if (!isMobileTabsOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (!tabsWrapperRef.current) {
+        return;
+      }
+      if (
+        typeof Node !== "undefined" &&
+        event.target instanceof Node &&
+        tabsWrapperRef.current.contains(event.target)
+      ) {
+        return;
+      }
+      setIsMobileTabsOpen(false);
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setIsMobileTabsOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileTabsOpen]);
+
   const viewPageNumbers = useMemo(() => {
     if (viewTotalPages === 0) {
       return [];
@@ -3813,6 +3848,7 @@ export default function Rolodex() {
         <div className="context-toolbar" role="group" aria-label="Contact context">
           <div
             className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
+            ref={tabsWrapperRef}
           >
             <button
               type="button"
@@ -3827,7 +3863,7 @@ export default function Rolodex() {
             </button>
             <nav
               id={tabListId}
-              className="rolodex-tabs"
+              className={`rolodex-tabs${isMobileTabsOpen ? " open" : ""}`}
               role="tablist"
               aria-label="Contact sections"
             >

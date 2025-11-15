@@ -327,6 +327,7 @@ html.theme-dark {
   flex-wrap: nowrap;
   width: 100%;
   overflow-x: auto;
+  overflow-y: visible;
   padding-bottom: 4px;
   scrollbar-width: none;
 }
@@ -503,7 +504,7 @@ html.theme-dark {
     min-width: 200px;
   }
 
-  .rolodex-tabs-wrapper.open .rolodex-tabs {
+  .rolodex-tabs.open {
     display: flex;
   }
 
