@@ -776,7 +776,6 @@ export default function Rolodex() {
     typeof authSession?.user?.email === "string"
       ? authSession.user.email.trim()
       : "";
-  const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
@@ -808,7 +807,6 @@ export default function Rolodex() {
     email: false,
     profileUrl: false,
   });
-  const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -1027,18 +1025,6 @@ export default function Rolodex() {
     }
   }, [authSession, authStatus, gmailStatus, pushToast]);
 
-  useEffect(() => {
-    if (authStatus === "loading") {
-      return;
-    }
-    setUsername((prev) => {
-      if (sessionEmail) {
-        return prev === sessionEmail ? prev : sessionEmail;
-      }
-      return prev ? "" : prev;
-    });
-  }, [authStatus, sessionEmail]);
-
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
@@ -1140,25 +1126,6 @@ export default function Rolodex() {
       window.localStorage.setItem("rolodex-theme", theme);
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (usernameHighlight && username.trim()) {
-      setUsernameHighlight(false);
-    }
-  }, [usernameHighlight, username]);
-
-  const usernameHelperText = useMemo(() => {
-    if (usernameHighlight) {
-      return sessionEmail
-        ? "Username is required to view a contact."
-        : "Connect Gmail to load your username.";
-    }
-    if (sessionEmail && gmailStatus === "connected") {
-      return "Using your Gmail address as the username.";
-    }
-    return "Contacts load automatically on the View and Email tabs.";
-  }, [gmailStatus, sessionEmail, usernameHighlight]);
-  const isUsernameReadOnly = gmailStatus === "connected" && Boolean(sessionEmail);
 
   useEffect(() => {
     if (contactHighlight && contactId.trim()) {
@@ -3055,13 +3022,12 @@ export default function Rolodex() {
       clearImportSubmitReset();
       setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
-      setUsernameHighlight(false);
       setContactHighlight(false);
       setCsvImportError("");
       setSearchKeywordError("");
       setSearchLinkError("");
 
-      const trimmedUsernameValue = username.trim();
+      const normalizedUsername = sessionEmail;
       const trimmedContactId = contactId.trim();
       const trimmedProfileUrlValue = profileUrl.trim();
       const trimmedSearchKeyword = searchKeyword.trim();
@@ -3101,11 +3067,10 @@ export default function Rolodex() {
         return false;
       }
 
-      if (action === "view" && !trimmedUsernameValue) {
-        const message = "Username is required to view a contact.";
+      if (action === "view" && !normalizedUsername) {
+        const message = "Connect Gmail to load contacts.";
         setErrorMessage(message);
         pushToast("error", message);
-        setUsernameHighlight(true);
         setLoadingAction(null);
         return false;
       }
@@ -3139,7 +3104,7 @@ export default function Rolodex() {
 
       const body = {
         action,
-        ...(trimmedUsernameValue ? { username: trimmedUsernameValue } : {}),
+        ...(normalizedUsername ? { username: normalizedUsername } : {}),
       };
 
       if (trimmedContactId && action !== "create" && action !== "email") {
@@ -3335,7 +3300,7 @@ export default function Rolodex() {
       setPreviewContent,
       setIsSampleEmailContacts,
       title,
-      username,
+      sessionEmail,
     ],
   );
 
@@ -3843,30 +3808,6 @@ export default function Rolodex() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <div className="field-input-row">
-                <input
-                  id="username"
-                  className="text-input"
-                  value={username}
-                  onChange={
-                    isUsernameReadOnly
-                      ? undefined
-                      : (event) => setUsername(event.target.value)
-                  }
-                  placeholder={sessionEmail || "Connect Gmail to load username"}
-                  autoComplete="off"
-                  readOnly={isUsernameReadOnly}
-                />
-              </div>
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHelperText}
-              </div>
-            </div>
-
             <div className="gmail-inline-field">
               <button
                 type="button"
@@ -3901,9 +3842,9 @@ export default function Rolodex() {
               </button>
             </div>
           </div>
-        <div
-          className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
-        >
+          <div
+            className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
+          >
           <button
             type="button"
             className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
@@ -4283,7 +4224,7 @@ export default function Rolodex() {
                 noValidate
               >
                 <p className="view-helper">
-                  Enter a username above and contacts will load automatically.
+                  Connect Gmail and your contacts will load automatically.
                 </p>
               </form>
             </div>
@@ -4388,7 +4329,7 @@ export default function Rolodex() {
               </div>
                 {emailContacts.length === 0 ? (
                   <p className="recipient-placeholder">
-                    Enter a username to load contacts for emailing.
+                    Connect Gmail to load contacts for emailing.
                   </p>
                 ) : (
                   <>
@@ -4886,7 +4827,7 @@ export default function Rolodex() {
                         disabled={emailContacts.length === 0}
                       >
                         {emailContacts.length === 0 ? (
-                          <option value="">Enter a username to preview contacts</option>
+                          <option value="">Connect Gmail to preview contacts</option>
                         ) : (
                           emailContacts.map((contact) => {
                             const id =
