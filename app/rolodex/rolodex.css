@@ -105,6 +105,7 @@ html.theme-dark {
   flex-direction: column;
   gap: 20px;
   position: relative;
+  z-index: 0;
 }
 
 .rolodex-card--no-heading {
@@ -141,15 +142,16 @@ html.theme-dark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
+  min-width: 42px;
   height: 42px;
-  padding: 0;
+  padding: 0 16px;
   border-radius: 9999px;
   border: 1px solid var(--card-border);
   background: var(--surface-background);
   color: var(--text-secondary);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+  gap: 8px;
   transition:
     background 0.15s ease,
     color 0.15s ease,
@@ -171,6 +173,14 @@ html.theme-dark {
 .theme-toggle svg {
   width: 16px;
   height: 16px;
+  flex: 0 0 auto;
+}
+
+.theme-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: none;
 }
 
 .rolodex-heading {
@@ -237,15 +247,16 @@ html.theme-dark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
+  min-width: 46px;
   height: 46px;
-  padding: 0;
+  padding: 0 18px;
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.5);
   background: var(--surface-background);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   position: relative;
+  gap: 10px;
   transition:
     transform 0.15s ease,
     box-shadow 0.2s ease,
@@ -303,10 +314,31 @@ html.theme-dark {
   color: #16a34a;
 }
 
-@media (max-width: 640px) {
+.gmail-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: none;
+  white-space: nowrap;
+}
+
+@media (max-aspect-ratio: 5/8) {
   .gmail-button {
     width: 40px;
     height: 40px;
+    padding: 0;
+  }
+
+  .theme-toggle {
+    width: 42px;
+    padding: 0;
+  }
+}
+
+@media (min-aspect-ratio: 5/8) {
+  .gmail-label,
+  .theme-label {
+    display: inline;
   }
 }
 
@@ -366,6 +398,7 @@ html.theme-dark {
   padding-bottom: 4px;
   scrollbar-width: none;
   position: relative;
+  z-index: 6;
 }
 
 .context-toolbar::-webkit-scrollbar {

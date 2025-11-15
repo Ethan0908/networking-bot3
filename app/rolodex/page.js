@@ -3922,6 +3922,9 @@ export default function Rolodex() {
                 aria-label={themeToggleLabel}
               >
                 {theme === "dark" ? <IconSun /> : <IconMoon />}
+                <span className="theme-label" aria-hidden="true">
+                  {theme === "dark" ? "Light" : "Dark"}
+                </span>
                 <span className="visually-hidden">{themeToggleLabel}</span>
               </button>
             </div>
@@ -3943,6 +3946,7 @@ export default function Rolodex() {
                     <IconCheck className="gmail-status gmail-status--check" />
                   ) : null}
                 </span>
+                <span className="gmail-label" aria-hidden="true">{gmailLabel}</span>
                 <span className="visually-hidden">{gmailLabel}</span>
                 <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
               </button>
