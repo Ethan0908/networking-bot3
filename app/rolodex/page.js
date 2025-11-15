@@ -817,6 +817,7 @@ export default function Rolodex() {
     { ...SAMPLE_CONTACT_RECORD, __contactId: SAMPLE_CONTACT_ID },
   ]);
   const [isSampleEmailContacts, setIsSampleEmailContacts] = useState(true);
+  const [viewContacts, setViewContacts] = useState([]);
   const [emailRecipients, setEmailRecipients] = useState([]);
   const [csvFileContent, setCsvFileContent] = useState("");
   const [csvFileName, setCsvFileName] = useState("");
@@ -3236,8 +3237,11 @@ export default function Rolodex() {
 
         if (action === "view") {
           const records = Array.isArray(data) ? data : data ? [data] : [];
-          const normalized = records
-            .filter((record) => record && typeof record === "object")
+          const viewableRecords = records.filter(
+            (record) => record && typeof record === "object",
+          );
+          setViewContacts(viewableRecords);
+          const normalized = viewableRecords
             .map((record) => ({
               ...record,
               __contactId: resolveContactId(record),
@@ -3299,6 +3303,7 @@ export default function Rolodex() {
       setPreviewContactId,
       setPreviewContent,
       setIsSampleEmailContacts,
+      setViewContacts,
       title,
       sessionEmail,
     ],
@@ -3556,12 +3561,11 @@ export default function Rolodex() {
   );
 
   const viewRecords = useMemo(() => {
-    if (lastAction !== "view" || !response) {
+    if (!Array.isArray(viewContacts) || viewContacts.length === 0) {
       return [];
     }
-    const records = Array.isArray(response) ? response : [response];
-    return records.filter((record) => record && typeof record === "object");
-  }, [lastAction, response]);
+    return viewContacts.filter((record) => record && typeof record === "object");
+  }, [viewContacts]);
 
   const sampleViewRecord = useMemo(() => ({ ...SAMPLE_CONTACT_RECORD }), []);
 
@@ -3806,8 +3810,45 @@ export default function Rolodex() {
     <div className="rolodex-page">
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
-        <div className="context-grid" role="group" aria-label="Contact context">
-          <div className="context-primary-row">
+        <div className="context-toolbar" role="group" aria-label="Contact context">
+          <div
+            className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
+          >
+            <button
+              type="button"
+              className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
+              aria-expanded={isMobileTabsOpen}
+              aria-controls={tabListId}
+              aria-haspopup="menu"
+              onClick={() => setIsMobileTabsOpen((prev) => !prev)}
+            >
+              <IconMenu className="tab-menu-icon" />
+              <span className="tab-menu-label">{activeTabLabel}</span>
+            </button>
+            <nav
+              id={tabListId}
+              className="rolodex-tabs"
+              role="tablist"
+              aria-label="Contact sections"
+            >
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`${tab.id}-tab`}
+                  aria-controls={`${tab.id}-panel`}
+                  aria-selected={activePage === tab.id}
+                  className={`tab-button${activePage === tab.id ? " active" : ""}`}
+                  onClick={() => handleTabClick(tab.id)}
+                  tabIndex={activePage === tab.id ? 0 : -1}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+          <div className="context-controls">
             <div className="gmail-inline-field">
               <button
                 type="button"
@@ -3842,44 +3883,6 @@ export default function Rolodex() {
               </button>
             </div>
           </div>
-          <div
-            className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
-          >
-          <button
-            type="button"
-            className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
-            aria-expanded={isMobileTabsOpen}
-            aria-controls={tabListId}
-            aria-haspopup="menu"
-            onClick={() => setIsMobileTabsOpen((prev) => !prev)}
-          >
-            <IconMenu className="tab-menu-icon" />
-            <span className="tab-menu-label">{activeTabLabel}</span>
-          </button>
-          <nav
-            id={tabListId}
-            className="rolodex-tabs"
-            role="tablist"
-            aria-label="Contact sections"
-          >
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                id={`${tab.id}-tab`}
-                aria-controls={`${tab.id}-panel`}
-                aria-selected={activePage === tab.id}
-                className={`tab-button${activePage === tab.id ? " active" : ""}`}
-                onClick={() => handleTabClick(tab.id)}
-                tabIndex={activePage === tab.id ? 0 : -1}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
         </div>
 
         <div className="tab-panel">
