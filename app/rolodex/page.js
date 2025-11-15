@@ -3849,6 +3849,18 @@ export default function Rolodex() {
             </nav>
           </div>
           <div className="context-controls">
+            <div className="theme-inline-field">
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={toggleTheme}
+                aria-label={themeToggleLabel}
+              >
+                {theme === "dark" ? <IconSun /> : <IconMoon />}
+                <span>{theme === "dark" ? "Light" : "Dark"}</span>
+              </button>
+            </div>
+
             <div className="gmail-inline-field">
               <button
                 type="button"
@@ -3868,18 +3880,6 @@ export default function Rolodex() {
                 </span>
                 {gmailLabel}
                 <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-              </button>
-            </div>
-
-            <div className="theme-inline-field">
-              <button
-                type="button"
-                className="theme-toggle"
-                onClick={toggleTheme}
-                aria-label={themeToggleLabel}
-              >
-                {theme === "dark" ? <IconSun /> : <IconMoon />}
-                <span>{theme === "dark" ? "Light" : "Dark"}</span>
               </button>
             </div>
           </div>
