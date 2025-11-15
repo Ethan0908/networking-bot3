@@ -772,6 +772,10 @@ function IconAlert(props) {
 
 export default function Rolodex() {
   const { data: authSession, status: authStatus } = useSession();
+  const sessionEmail =
+    typeof authSession?.user?.email === "string"
+      ? authSession.user.email.trim()
+      : "";
   const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -1023,6 +1027,18 @@ export default function Rolodex() {
     }
   }, [authSession, authStatus, gmailStatus, pushToast]);
 
+  useEffect(() => {
+    if (authStatus === "loading") {
+      return;
+    }
+    setUsername((prev) => {
+      if (sessionEmail) {
+        return prev === sessionEmail ? prev : sessionEmail;
+      }
+      return prev ? "" : prev;
+    });
+  }, [authStatus, sessionEmail]);
+
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
@@ -1130,6 +1146,19 @@ export default function Rolodex() {
       setUsernameHighlight(false);
     }
   }, [usernameHighlight, username]);
+
+  const usernameHelperText = useMemo(() => {
+    if (usernameHighlight) {
+      return sessionEmail
+        ? "Username is required to view a contact."
+        : "Connect Gmail to load your username.";
+    }
+    if (sessionEmail && gmailStatus === "connected") {
+      return "Using your Gmail address as the username.";
+    }
+    return "Contacts load automatically on the View and Email tabs.";
+  }, [gmailStatus, sessionEmail, usernameHighlight]);
+  const isUsernameReadOnly = gmailStatus === "connected" && Boolean(sessionEmail);
 
   useEffect(() => {
     if (contactHighlight && contactId.trim()) {
@@ -3823,15 +3852,18 @@ export default function Rolodex() {
                   id="username"
                   className="text-input"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Username"
+                  onChange={
+                    isUsernameReadOnly
+                      ? undefined
+                      : (event) => setUsername(event.target.value)
+                  }
+                  placeholder={sessionEmail || "Connect Gmail to load username"}
                   autoComplete="off"
+                  readOnly={isUsernameReadOnly}
                 />
               </div>
               <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Contacts load automatically on the View and Email tabs."}
+                {usernameHelperText}
               </div>
             </div>
 
