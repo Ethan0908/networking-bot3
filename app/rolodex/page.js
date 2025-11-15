@@ -125,6 +125,35 @@ function IconMenu(props) {
   );
 }
 
+function IconGoogle(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 48 48"
+      className={props.className}
+      role="img"
+      focusable="false"
+    >
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.94 0 6.6 1.7 8.12 3.13l5.9-5.74C34.92 3.25 29.92 1 24 1 14.74 1 6.9 6.16 3.24 14.02l6.9 5.35C11.6 13.4 17.2 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.5 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h12.65c-.55 2.82-2.22 5.2-4.72 6.8l7.25 5.63C43.79 36.9 46.5 31.3 46.5 24.5z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M24 47c6.48 0 11.9-2.13 15.87-5.8l-7.25-5.63C30.7 37.8 27.59 38.5 24 38.5c-6.8 0-12.41-3.9-15.86-9.35l-6.9 7.34C6.9 41.84 14.74 47 24 47z"
+      />
+      <path
+        fill="#34A853"
+        d="M10.14 28.86c-1.08-3.2-1.08-6.5 0-9.7L3.24 13.8C-.47 20.64-.47 29.36 3.24 36.2l6.9-7.34z"
+      />
+    </svg>
+  );
+}
+
 const TOAST_TIMEOUT = 4500;
 
 const EMAIL_REGEX = /.+@.+\..+/;
@@ -3893,7 +3922,7 @@ export default function Rolodex() {
                 aria-label={themeToggleLabel}
               >
                 {theme === "dark" ? <IconSun /> : <IconMoon />}
-                <span>{theme === "dark" ? "Light" : "Dark"}</span>
+                <span className="visually-hidden">{themeToggleLabel}</span>
               </button>
             </div>
 
@@ -3904,17 +3933,17 @@ export default function Rolodex() {
                 onClick={handleGmailClick}
                 disabled={gmailStatus === "connecting"}
                 aria-busy={gmailStatus === "connecting"}
+                aria-label={gmailLabel}
               >
-                <span className="icon">
+                <span className="gmail-icon" aria-hidden="true">
+                  <IconGoogle className="gmail-google" />
                   {gmailStatus === "connecting" ? (
-                    <IconLoader />
+                    <IconLoader className="loader gmail-status" />
                   ) : gmailStatus === "connected" ? (
-                    <IconCheck />
-                  ) : (
-                    <IconMail />
-                  )}
+                    <IconCheck className="gmail-status gmail-status--check" />
+                  ) : null}
                 </span>
-                {gmailLabel}
+                <span className="visually-hidden">{gmailLabel}</span>
                 <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
               </button>
             </div>
