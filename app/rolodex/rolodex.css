@@ -301,6 +301,21 @@ html.theme-dark {
   transform: translateY(0);
 }
 
+@media (max-aspect-ratio: 3/4) {
+  .gmail-button {
+    padding: 12px 12px;
+  }
+
+  .gmail-button .gmail-label,
+  .theme-toggle .theme-label {
+    display: none;
+  }
+
+  .theme-toggle {
+    padding: 8px 10px;
+  }
+}
+
 .rolodex-form {
   display: flex;
   flex-direction: column;
@@ -322,62 +337,54 @@ html.theme-dark {
 .context-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .context-primary-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 14px 16px;
 }
 
-.context-primary-row .gmail-inline-field,
-.context-primary-row .theme-inline-field {
+.context-primary-row.controls-row {
+  align-items: center;
+}
+
+.context-primary-row .rolodex-tabs-wrapper {
+  flex: 1 1 360px;
+  min-width: 260px;
+}
+
+.context-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.context-actions .gmail-inline-field,
+.context-actions .theme-inline-field {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
 }
 
-.context-primary-row .username-field {
-  flex: 1 1 320px;
-  min-width: 220px;
-  order: 0;
-  min-height: auto;
-  position: relative;
-  gap: 0;
-  padding-bottom: calc(var(--field-helper-height) + 6px);
-}
-
-.context-primary-row .gmail-inline-field {
-  order: 1;
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.context-primary-row .theme-inline-field {
-  order: 2;
-}
-
-.context-primary-row .username-field .field-input-row {
-  align-items: center;
-}
-
-.context-primary-row .username-field .helper-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-}
-
-.context-primary-row .gmail-inline-field .gmail-button {
+.context-actions .gmail-inline-field .gmail-button {
   flex-shrink: 0;
 }
 
 .contact-id-field {
   width: 100%;
+}
+
+.context-helper {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {
@@ -387,28 +394,14 @@ html.theme-dark {
     gap: 12px;
   }
 
-  .context-primary-row .theme-inline-field,
-  .context-primary-row .gmail-inline-field {
-    flex: 1 1 calc(50% - 6px);
+  .context-primary-row .rolodex-tabs-wrapper {
+    flex: 1 1 100%;
     min-width: 0;
   }
 
-  .context-primary-row .theme-inline-field {
-    order: 0;
+  .context-actions {
+    width: 100%;
     justify-content: flex-start;
-    margin-left: 0;
-  }
-
-  .context-primary-row .gmail-inline-field {
-    order: 1;
-    justify-content: flex-end;
-    margin-left: 0;
-  }
-
-  .context-primary-row .username-field {
-    flex: 0 0 100%;
-    min-width: 0;
-    order: 2;
   }
 }
 
@@ -439,13 +432,15 @@ html.theme-dark {
   align-items: center;
   gap: 12px;
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .tab-menu-toggle {
   display: none;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 9px 16px;
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.45);
   background: transparent;
@@ -484,8 +479,51 @@ html.theme-dark {
 .rolodex-tabs {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow: hidden;
+}
+
+.rolodex-tabs-wrapper:not(.collapsed) .rolodex-tabs {
+  position: static;
+  flex-direction: row;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.rolodex-tabs-wrapper.collapsed .tab-menu-toggle {
+  display: inline-flex;
+}
+
+.rolodex-tabs-wrapper:not(.collapsed) .tab-menu-toggle {
+  display: none;
+}
+
+.rolodex-tabs-wrapper.collapsed .rolodex-tabs {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: var(--shadow-sm);
+  display: none;
+  z-index: 10;
+  min-width: 200px;
+}
+
+.rolodex-tabs-wrapper.collapsed.open .rolodex-tabs {
+  display: flex;
+}
+
+.rolodex-tabs-wrapper.collapsed .tab-button {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .tab-button {
@@ -518,41 +556,6 @@ html.theme-dark {
   background: rgba(37, 99, 235, 0.16);
   border-color: rgba(37, 99, 235, 0.45);
   color: var(--text-primary);
-}
-
-@media (max-width: 768px) {
-  .rolodex-tabs-wrapper {
-    align-items: stretch;
-  }
-
-  .tab-menu-toggle {
-    display: inline-flex;
-  }
-
-  .rolodex-tabs {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    flex-direction: column;
-    gap: 6px;
-    background: var(--card-background);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 8px;
-    box-shadow: var(--shadow-sm);
-    display: none;
-    z-index: 10;
-    min-width: 200px;
-  }
-
-  .rolodex-tabs-wrapper.open .rolodex-tabs {
-    display: flex;
-  }
-
-  .tab-button {
-    width: 100%;
-    justify-content: flex-start;
-  }
 }
 
 .tab-panel {
