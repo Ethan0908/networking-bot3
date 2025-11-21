@@ -1,7 +1,7 @@
 "use client";
 import { signIn, useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoverLetterWorkspace } from "../cover-letter/workspace";
 import "./rolodex.css";
 
@@ -771,7 +771,7 @@ function IconAlert(props) {
   );
 }
 
-export default function Rolodex() {
+function RolodexContent() {
   const { data: authSession, status: authStatus } = useSession();
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
@@ -5577,5 +5577,13 @@ export default function Rolodex() {
         </footer>
       </section>
     </div>
+  );
+}
+
+export default function Rolodex() {
+  return (
+    <Suspense fallback={null}>
+      <RolodexContent />
+    </Suspense>
   );
 }
