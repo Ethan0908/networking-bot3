@@ -419,6 +419,10 @@ html.theme-dark {
   z-index: 1;
 }
 
+.rolodex-tabs-wrapper.condensed {
+  align-items: stretch;
+}
+
 .tab-menu-toggle {
   display: none;
   align-items: center;
@@ -464,6 +468,44 @@ html.theme-dark {
   flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.rolodex-tabs-wrapper.condensed .tab-menu-toggle {
+  display: inline-flex;
+}
+
+.rolodex-tabs-wrapper.condensed .rolodex-tabs {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 6px;
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: var(--shadow-sm);
+  min-width: 200px;
+  max-width: min(480px, 90vw);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 20;
+}
+
+.rolodex-tabs-wrapper.condensed.open .rolodex-tabs {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.rolodex-tabs-wrapper.condensed .tab-button {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .tab-button {
@@ -512,15 +554,21 @@ html.theme-dark {
     top: calc(100% + 6px);
     left: 0;
     flex-direction: column;
+    flex-wrap: nowrap;
     gap: 6px;
     background: var(--card-background);
     border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 8px;
     box-shadow: var(--shadow-sm);
-    display: none;
-    z-index: 20;
     min-width: 200px;
+    max-width: min(480px, 90vw);
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    z-index: 20;
   }
 
   .rolodex-tabs-wrapper {
@@ -528,7 +576,10 @@ html.theme-dark {
   }
 
   .rolodex-tabs-wrapper.open .rolodex-tabs {
-    display: flex;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
   }
 
   .tab-button {

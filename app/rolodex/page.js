@@ -795,6 +795,7 @@ function RolodexContent() {
   const [toasts, setToasts] = useState([]);
   const [activePage, setActivePage] = useState("create");
   const [isMobileTabsOpen, setIsMobileTabsOpen] = useState(false);
+  const [areTabsCondensed, setAreTabsCondensed] = useState(false);
   const [lastAction, setLastAction] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({
@@ -869,6 +870,8 @@ function RolodexContent() {
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
   const autoViewKeyRef = useRef("");
+  const tabListRef = useRef(null);
+  const tabsWrapperRef = useRef(null);
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -3514,6 +3517,23 @@ function RolodexContent() {
 
   const tabListId = "rolodex-tablist";
 
+  const recomputeTabLayout = useCallback(() => {
+    if (!tabsWrapperRef.current || !tabListRef.current) {
+      return;
+    }
+    const wrapperWidth = tabsWrapperRef.current.clientWidth;
+    const tabList = tabListRef.current;
+    const firstRowHeight =
+      tabList.firstElementChild?.getBoundingClientRect().height ||
+      tabList.getBoundingClientRect().height ||
+      0;
+    const totalHeight = tabList.getBoundingClientRect().height;
+    const willWrap =
+      tabList.scrollWidth - wrapperWidth > 4 ||
+      (firstRowHeight > 0 && totalHeight - firstRowHeight > 4);
+    setAreTabsCondensed(willWrap);
+  }, []);
+
   const handleTabClick = useCallback(
     (tabId) => {
       setActivePage(tabId);
@@ -3804,6 +3824,35 @@ function RolodexContent() {
     setIsMobileTabsOpen(false);
   }, [activePage]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const handleResize = () => {
+      recomputeTabLayout();
+    };
+    window.addEventListener("resize", handleResize);
+    const observer = new ResizeObserver(handleResize);
+    if (tabsWrapperRef.current) {
+      observer.observe(tabsWrapperRef.current);
+    }
+    if (tabListRef.current) {
+      observer.observe(tabListRef.current);
+    }
+    handleResize();
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      observer.disconnect();
+    };
+  }, [recomputeTabLayout]);
+
+  useEffect(() => {
+    recomputeTabLayout();
+    if (!areTabsCondensed) {
+      setIsMobileTabsOpen(false);
+    }
+  }, [activePage, areTabsCondensed, recomputeTabLayout]);
+
   const viewPageNumbers = useMemo(() => {
     if (viewTotalPages === 0) {
       return [];
@@ -3845,7 +3894,10 @@ function RolodexContent() {
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
             <div
-              className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
+              ref={tabsWrapperRef}
+              className={`rolodex-tabs-wrapper${
+                isMobileTabsOpen ? " open" : ""
+              }${areTabsCondensed ? " condensed" : ""}`}
             >
               <button
                 type="button"
@@ -3861,6 +3913,7 @@ function RolodexContent() {
               <nav
                 id={tabListId}
                 className="rolodex-tabs"
+                ref={tabListRef}
                 role="tablist"
                 aria-label="Contact sections"
               >
