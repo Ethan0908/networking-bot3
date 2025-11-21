@@ -331,52 +331,33 @@ html.theme-dark {
 
 .context-primary-row {
   display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: stretch;
   justify-content: flex-start;
-  gap: 14px 16px;
+  gap: 12px 16px;
 }
 
-.context-primary-row .gmail-inline-field,
-.context-primary-row .theme-inline-field {
+.context-primary-row .rolodex-tabs-wrapper {
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
+.context-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.context-actions .gmail-inline-field,
+.context-actions .theme-inline-field {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
 }
 
-.context-primary-row .username-field {
-  flex: 1 1 320px;
-  min-width: 220px;
-  order: 0;
-  min-height: auto;
-  position: relative;
-  gap: 0;
-  padding-bottom: calc(var(--field-helper-height) + 6px);
-}
-
-.context-primary-row .gmail-inline-field {
-  order: 1;
-  margin-left: auto;
-  justify-content: flex-end;
-}
-
-.context-primary-row .theme-inline-field {
-  order: 2;
-}
-
-.context-primary-row .username-field .field-input-row {
-  align-items: center;
-}
-
-.context-primary-row .username-field .helper-text {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-}
-
-.context-primary-row .gmail-inline-field .gmail-button {
+.context-actions .gmail-inline-field .gmail-button {
   flex-shrink: 0;
 }
 
@@ -386,33 +367,17 @@ html.theme-dark {
 
 @media (max-width: 768px) {
   .context-primary-row {
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 10px 12px;
   }
 
-  .context-primary-row .theme-inline-field,
-  .context-primary-row .gmail-inline-field {
-    flex: 1 1 calc(50% - 6px);
+  .context-primary-row .rolodex-tabs-wrapper {
+    flex: 1 1 100%;
     min-width: 0;
   }
 
-  .context-primary-row .theme-inline-field {
-    order: 0;
-    justify-content: flex-start;
-    margin-left: 0;
-  }
-
-  .context-primary-row .gmail-inline-field {
-    order: 1;
+  .context-actions {
+    flex: 1 1 100%;
     justify-content: flex-end;
-    margin-left: 0;
-  }
-
-  .context-primary-row .username-field {
-    flex: 0 0 100%;
-    min-width: 0;
-    order: 2;
   }
 }
 
@@ -424,6 +389,14 @@ html.theme-dark {
 
 .field-input-row .text-input {
   flex: 1 1 auto;
+}
+
+.rolodex-tabs-wrapper,
+.tab-menu-toggle,
+.tab-button,
+.theme-toggle,
+.gmail-button {
+  min-height: 44px;
 }
 
 .visually-hidden {

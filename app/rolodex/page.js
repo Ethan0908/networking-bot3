@@ -774,7 +774,6 @@ function IconAlert(props) {
 function RolodexContent() {
   const { data: authSession, status: authStatus } = useSession();
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
   const [title, setTitle] = useState("");
@@ -806,7 +805,6 @@ function RolodexContent() {
     email: false,
     profileUrl: false,
   });
-  const [usernameHighlight, setUsernameHighlight] = useState(false);
   const [contactHighlight, setContactHighlight] = useState(false);
   const [theme, setTheme] = useState("light");
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -870,6 +868,7 @@ function RolodexContent() {
   const subjectRef = useRef(null);
   const bodyRef = useRef(null);
   const importSubmitResetRef = useRef(null);
+  const autoViewKeyRef = useRef("");
 
   const clearImportSubmitReset = useCallback(() => {
     if (importSubmitResetRef.current) {
@@ -1038,6 +1037,11 @@ function RolodexContent() {
     }
   }, [authSession, authStatus, gmailStatus, pushToast]);
 
+  const connectedUsername = useMemo(
+    () => authSession?.user?.email?.trim?.() ?? "",
+    [authSession?.user?.email],
+  );
+
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
@@ -1139,12 +1143,6 @@ function RolodexContent() {
       window.localStorage.setItem("rolodex-theme", theme);
     }
   }, [theme]);
-
-  useEffect(() => {
-    if (usernameHighlight && username.trim()) {
-      setUsernameHighlight(false);
-    }
-  }, [usernameHighlight, username]);
 
   useEffect(() => {
     if (contactHighlight && contactId.trim()) {
@@ -3041,13 +3039,12 @@ function RolodexContent() {
       clearImportSubmitReset();
       setImportSubmitStatus(action === "import1" ? "saving" : "idle");
       resetResponses();
-      setUsernameHighlight(false);
-      setContactHighlight(false);
-      setCsvImportError("");
-      setSearchKeywordError("");
+    setContactHighlight(false);
+    setCsvImportError("");
+    setSearchKeywordError("");
       setSearchLinkError("");
 
-      const trimmedUsernameValue = username.trim();
+      const trimmedUsernameValue = connectedUsername;
       const trimmedContactId = contactId.trim();
       const trimmedProfileUrlValue = profileUrl.trim();
       const trimmedSearchKeyword = searchKeyword.trim();
@@ -3088,10 +3085,9 @@ function RolodexContent() {
       }
 
       if (action === "view" && !trimmedUsernameValue) {
-        const message = "Username is required to view a contact.";
+        const message = "Connect Gmail to load contacts.";
         setErrorMessage(message);
         pushToast("error", message);
-        setUsernameHighlight(true);
         setLoadingAction(null);
         return false;
       }
@@ -3321,7 +3317,7 @@ function RolodexContent() {
       setPreviewContent,
       setIsSampleEmailContacts,
       title,
-      username,
+      connectedUsername,
     ],
   );
 
@@ -3523,10 +3519,11 @@ function RolodexContent() {
       setActivePage(tabId);
       setIsMobileTabsOpen(false);
       if ((tabId === "view" || tabId === "email") && !disableSubmit) {
+        autoViewKeyRef.current = `${connectedUsername}:${tabId}`;
         void submitAction("view");
       }
     },
-    [disableSubmit, submitAction],
+    [connectedUsername, disableSubmit, submitAction],
   );
 
   const handleRefreshContacts = useCallback(() => {
@@ -3535,6 +3532,24 @@ function RolodexContent() {
     }
     void submitAction("view");
   }, [disableSubmit, submitAction]);
+
+  useEffect(() => {
+    if (loadingAction) {
+      return;
+    }
+    if (activePage !== "view" && activePage !== "email") {
+      return;
+    }
+    if (!connectedUsername) {
+      return;
+    }
+    const key = `${connectedUsername}:${activePage}`;
+    if (autoViewKeyRef.current === key) {
+      return;
+    }
+    autoViewKeyRef.current = key;
+    void submitAction("view");
+  }, [activePage, connectedUsername, loadingAction, submitAction]);
 
   const viewColumns = useMemo(
     () => [
@@ -3829,101 +3844,87 @@ function RolodexContent() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-grid" role="group" aria-label="Contact context">
           <div className="context-primary-row">
-            <div className={`field username-field${usernameHighlight ? " error" : ""}`}>
-              <label className="field-label" htmlFor="username">
-                Username
-              </label>
-              <div className="field-input-row">
-                <input
-                  id="username"
-                  className="text-input"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Username"
-                  autoComplete="off"
-                />
-              </div>
-              <div className={`helper-text${usernameHighlight ? " error" : ""}`}>
-                {usernameHighlight
-                  ? "Username is required to view a contact."
-                  : "Contacts load automatically on the View and Email tabs."}
-              </div>
-          </div>
-
-          <div className="gmail-inline-field">
-            <button
-              type="button"
-              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-              onClick={handleGmailClick}
-              disabled={gmailStatus === "connecting"}
-              aria-busy={gmailStatus === "connecting"}
-              aria-label={gmailLabel}
+            <div
+              className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
             >
-              <span className="icon">
-                {gmailStatus === "connecting" ? (
-                  <IconLoader />
-                ) : gmailStatus === "connected" ? (
-                  <IconCheck />
-                ) : (
-                  <IconMail />
-                )}
-              </span>
-              <span className="gmail-label">{gmailLabel}</span>
-              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-            </button>
-          </div>
-
-          <div className="theme-inline-field">
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={toggleTheme}
-              aria-label={themeToggleLabel}
-            >
-              {theme === "dark" ? <IconSun /> : <IconMoon />}
-              <span className="theme-label">
-                {theme === "dark" ? "Light" : "Dark"}
-              </span>
-            </button>
-          </div>
-        </div>
-        <div
-          className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
-        >
-          <button
-            type="button"
-            className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
-            aria-expanded={isMobileTabsOpen}
-            aria-controls={tabListId}
-            aria-haspopup="menu"
-            onClick={() => setIsMobileTabsOpen((prev) => !prev)}
-          >
-            <IconMenu className="tab-menu-icon" />
-            <span className="tab-menu-label">{activeTabLabel}</span>
-          </button>
-          <nav
-            id={tabListId}
-            className="rolodex-tabs"
-            role="tablist"
-            aria-label="Contact sections"
-          >
-            {tabs.map((tab) => (
               <button
-                key={tab.id}
                 type="button"
-                role="tab"
-                id={`${tab.id}-tab`}
-                aria-controls={`${tab.id}-panel`}
-                aria-selected={activePage === tab.id}
-                className={`tab-button${activePage === tab.id ? " active" : ""}`}
-                onClick={() => handleTabClick(tab.id)}
-                tabIndex={activePage === tab.id ? 0 : -1}
+                className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
+                aria-expanded={isMobileTabsOpen}
+                aria-controls={tabListId}
+                aria-haspopup="menu"
+                onClick={() => setIsMobileTabsOpen((prev) => !prev)}
               >
-                {tab.label}
+                <IconMenu className="tab-menu-icon" />
+                <span className="tab-menu-label">{activeTabLabel}</span>
               </button>
-            ))}
-          </nav>
-        </div>
+              <nav
+                id={tabListId}
+                className="rolodex-tabs"
+                role="tablist"
+                aria-label="Contact sections"
+              >
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`${tab.id}-tab`}
+                    aria-controls={`${tab.id}-panel`}
+                    aria-selected={activePage === tab.id}
+                    className={`tab-button${
+                      activePage === tab.id ? " active" : ""
+                    }`}
+                    onClick={() => handleTabClick(tab.id)}
+                    tabIndex={activePage === tab.id ? 0 : -1}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="context-actions">
+              <div className="theme-inline-field">
+                <button
+                  type="button"
+                  className="theme-toggle"
+                  onClick={toggleTheme}
+                  aria-label={themeToggleLabel}
+                >
+                  {theme === "dark" ? <IconSun /> : <IconMoon />}
+                  <span className="theme-label">
+                    {theme === "dark" ? "Light" : "Dark"}
+                  </span>
+                </button>
+              </div>
+
+              <div className="gmail-inline-field">
+                <button
+                  type="button"
+                  className={`gmail-button${
+                    gmailStatus === "connected" ? " connected" : ""
+                  }`}
+                  onClick={handleGmailClick}
+                  disabled={gmailStatus === "connecting"}
+                  aria-busy={gmailStatus === "connecting"}
+                  aria-label={gmailLabel}
+                >
+                  <span className="icon">
+                    {gmailStatus === "connecting" ? (
+                      <IconLoader />
+                    ) : gmailStatus === "connected" ? (
+                      <IconCheck />
+                    ) : (
+                      <IconMail />
+                    )}
+                  </span>
+                  <span className="gmail-label">{gmailLabel}</span>
+                  <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
         </div>
 
@@ -4269,7 +4270,8 @@ function RolodexContent() {
                 noValidate
               >
                 <p className="view-helper">
-                  Enter a username above and contacts will load automatically.
+                  Connect Gmail to load contacts automatically on the View and Email
+                  tabs.
                 </p>
               </form>
             </div>
@@ -4368,13 +4370,13 @@ function RolodexContent() {
               <div className="recipients-block">
                 <div className="recipients-toolbar">
                   <span id="recipient-label" className="recipients-title">
-                  Contacts
-                </span>
-                <div className="recipient-controls" />
-              </div>
+                    Contacts
+                  </span>
+                  <div className="recipient-controls" />
+                </div>
                 {emailContacts.length === 0 ? (
                   <p className="recipient-placeholder">
-                    Enter a username to load contacts for emailing.
+                    Connect Gmail to load contacts for emailing.
                   </p>
                 ) : (
                   <>
@@ -4872,7 +4874,7 @@ function RolodexContent() {
                         disabled={emailContacts.length === 0}
                       >
                         {emailContacts.length === 0 ? (
-                          <option value="">Enter a username to preview contacts</option>
+                          <option value="">Connect Gmail to preview contacts</option>
                         ) : (
                           emailContacts.map((contact) => {
                             const id =
