@@ -3523,11 +3523,16 @@ function RolodexContent() {
     }
     const wrapperWidth = tabsWrapperRef.current.clientWidth;
     const tabList = tabListRef.current;
-    const collapseBuffer = 88;
-    const expandBuffer = 64;
-    const targetBuffer = areTabsCondensed ? expandBuffer : collapseBuffer;
-    const willWrap = tabList.scrollWidth > wrapperWidth - targetBuffer;
-    setAreTabsCondensed(willWrap);
+    const collapseBuffer = 120;
+    const expandBuffer = 80;
+    const totalTabWidth = tabList.scrollWidth;
+    if (!areTabsCondensed && totalTabWidth > wrapperWidth - collapseBuffer) {
+      setAreTabsCondensed(true);
+      return;
+    }
+    if (areTabsCondensed && totalTabWidth < wrapperWidth - expandBuffer) {
+      setAreTabsCondensed(false);
+    }
   }, [areTabsCondensed]);
 
   const handleTabClick = useCallback(
