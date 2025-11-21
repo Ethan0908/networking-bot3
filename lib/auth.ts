@@ -22,6 +22,9 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  pages: {
+    error: "/rolodex",
+  },
   callbacks: {
   async jwt({ token, account }) {
     if (account) {

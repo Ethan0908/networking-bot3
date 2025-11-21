@@ -275,6 +275,10 @@ html.theme-dark {
   justify-content: center;
 }
 
+.gmail-label {
+  white-space: nowrap;
+}
+
 .gmail-tooltip {
   position: absolute;
   top: 100%;
@@ -439,6 +443,7 @@ html.theme-dark {
   align-items: center;
   gap: 12px;
   position: relative;
+  z-index: 1;
 }
 
 .tab-menu-toggle {
@@ -541,8 +546,12 @@ html.theme-dark {
     padding: 8px;
     box-shadow: var(--shadow-sm);
     display: none;
-    z-index: 10;
+    z-index: 20;
     min-width: 200px;
+  }
+
+  .rolodex-tabs-wrapper {
+    z-index: 15;
   }
 
   .rolodex-tabs-wrapper.open .rolodex-tabs {
@@ -552,6 +561,27 @@ html.theme-dark {
   .tab-button {
     width: 100%;
     justify-content: flex-start;
+  }
+}
+
+@media (max-aspect-ratio: 3/4) {
+  .theme-toggle {
+    padding: 8px;
+    justify-content: center;
+  }
+
+  .theme-toggle .theme-label {
+    display: none;
+  }
+
+  .gmail-button {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .gmail-button .gmail-label,
+  .gmail-button .gmail-tooltip {
+    display: none;
   }
 }
 

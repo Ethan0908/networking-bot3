@@ -1,5 +1,6 @@
 "use client";
 import { signIn, useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoverLetterWorkspace } from "../cover-letter/workspace";
 import "./rolodex.css";
@@ -772,6 +773,7 @@ function IconAlert(props) {
 
 export default function Rolodex() {
   const { data: authSession, status: authStatus } = useSession();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [contactId, setContactId] = useState("");
   const [fullName, setFullName] = useState("");
@@ -995,6 +997,19 @@ export default function Rolodex() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, TOAST_TIMEOUT);
   }, []);
+
+  useEffect(() => {
+    const errorParam = searchParams?.get("error");
+    if (!errorParam) return;
+
+    pushToast("error", "Sign in error");
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      window.history.replaceState(null, document.title, url.toString());
+    }
+  }, [pushToast, searchParams]);
 
   useEffect(() => {
     if (authStatus === "loading") {
@@ -3833,42 +3848,45 @@ export default function Rolodex() {
                   ? "Username is required to view a contact."
                   : "Contacts load automatically on the View and Email tabs."}
               </div>
-            </div>
-
-            <div className="gmail-inline-field">
-              <button
-                type="button"
-                className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
-                onClick={handleGmailClick}
-                disabled={gmailStatus === "connecting"}
-                aria-busy={gmailStatus === "connecting"}
-              >
-                <span className="icon">
-                  {gmailStatus === "connecting" ? (
-                    <IconLoader />
-                  ) : gmailStatus === "connected" ? (
-                    <IconCheck />
-                  ) : (
-                    <IconMail />
-                  )}
-                </span>
-                {gmailLabel}
-                <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
-              </button>
-            </div>
-
-            <div className="theme-inline-field">
-              <button
-                type="button"
-                className="theme-toggle"
-                onClick={toggleTheme}
-                aria-label={themeToggleLabel}
-              >
-                {theme === "dark" ? <IconSun /> : <IconMoon />}
-                <span>{theme === "dark" ? "Light" : "Dark"}</span>
-              </button>
-            </div>
           </div>
+
+          <div className="gmail-inline-field">
+            <button
+              type="button"
+              className={`gmail-button${gmailStatus === "connected" ? " connected" : ""}`}
+              onClick={handleGmailClick}
+              disabled={gmailStatus === "connecting"}
+              aria-busy={gmailStatus === "connecting"}
+              aria-label={gmailLabel}
+            >
+              <span className="icon">
+                {gmailStatus === "connecting" ? (
+                  <IconLoader />
+                ) : gmailStatus === "connected" ? (
+                  <IconCheck />
+                ) : (
+                  <IconMail />
+                )}
+              </span>
+              <span className="gmail-label">{gmailLabel}</span>
+              <span className="gmail-tooltip">Use Gmail to auto-log emails.</span>
+            </button>
+          </div>
+
+          <div className="theme-inline-field">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={themeToggleLabel}
+            >
+              {theme === "dark" ? <IconSun /> : <IconMoon />}
+              <span className="theme-label">
+                {theme === "dark" ? "Light" : "Dark"}
+              </span>
+            </button>
+          </div>
+        </div>
         <div
           className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
         >
