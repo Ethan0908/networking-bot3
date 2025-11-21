@@ -340,7 +340,8 @@ html.theme-dark {
 .context-primary-row .rolodex-tabs-wrapper {
   flex: 1 1 320px;
   min-width: 240px;
-  padding-right: 8px;
+  padding-right: 56px;
+  align-self: center;
 }
 
 .context-actions {
@@ -374,6 +375,7 @@ html.theme-dark {
   .context-primary-row .rolodex-tabs-wrapper {
     flex: 1 1 100%;
     min-width: 0;
+    padding-right: 16px;
   }
 
   .context-actions {
