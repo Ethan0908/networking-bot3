@@ -332,7 +332,7 @@ html.theme-dark {
 .context-primary-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: stretch;
+  align-items: center;
   justify-content: flex-start;
   gap: 12px 16px;
 }
@@ -340,6 +340,7 @@ html.theme-dark {
 .context-primary-row .rolodex-tabs-wrapper {
   flex: 1 1 320px;
   min-width: 240px;
+  padding-right: 8px;
 }
 
 .context-actions {
@@ -399,6 +400,13 @@ html.theme-dark {
   min-height: 44px;
 }
 
+.tab-menu-toggle,
+.tab-button,
+.theme-toggle,
+.gmail-button {
+  align-self: center;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -420,7 +428,7 @@ html.theme-dark {
 }
 
 .rolodex-tabs-wrapper.condensed {
-  align-items: stretch;
+  align-items: center;
 }
 
 .tab-menu-toggle {

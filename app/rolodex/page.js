@@ -3523,7 +3523,8 @@ function RolodexContent() {
     }
     const wrapperWidth = tabsWrapperRef.current.clientWidth;
     const tabList = tabListRef.current;
-    const willWrap = tabList.scrollWidth - wrapperWidth > 4;
+    const buffer = 28;
+    const willWrap = tabList.scrollWidth > wrapperWidth - buffer;
     setAreTabsCondensed(willWrap);
   }, []);
 
