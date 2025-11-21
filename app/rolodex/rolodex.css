@@ -466,7 +466,7 @@ html.theme-dark {
 .rolodex-tabs {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 

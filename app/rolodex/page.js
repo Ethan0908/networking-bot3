@@ -3523,14 +3523,7 @@ function RolodexContent() {
     }
     const wrapperWidth = tabsWrapperRef.current.clientWidth;
     const tabList = tabListRef.current;
-    const firstRowHeight =
-      tabList.firstElementChild?.getBoundingClientRect().height ||
-      tabList.getBoundingClientRect().height ||
-      0;
-    const totalHeight = tabList.getBoundingClientRect().height;
-    const willWrap =
-      tabList.scrollWidth - wrapperWidth > 4 ||
-      (firstRowHeight > 0 && totalHeight - firstRowHeight > 4);
+    const willWrap = tabList.scrollWidth - wrapperWidth > 4;
     setAreTabsCondensed(willWrap);
   }, []);
 
