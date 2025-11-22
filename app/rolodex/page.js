@@ -3563,6 +3563,7 @@ export default function Rolodex() {
 
     const resizeObserver = new ResizeObserver(checkWrap);
     resizeObserver.observe(tabList);
+    resizeObserver.observe(wrapper);
     window.addEventListener("resize", checkWrap);
 
     checkWrap();
