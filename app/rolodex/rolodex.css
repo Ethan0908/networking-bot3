@@ -342,6 +342,13 @@ html.theme-dark {
   }
 }
 
+@media (max-width: 900px) {
+  .gmail-label,
+  .theme-label {
+    display: none !important;
+  }
+}
+
 .gmail-tooltip {
   position: absolute;
   top: 100%;
@@ -469,6 +476,10 @@ html.theme-dark {
   position: relative;
 }
 
+.rolodex-tabs-wrapper.compact {
+  align-items: stretch;
+}
+
 .tab-menu-toggle {
   display: none;
   align-items: center;
@@ -520,6 +531,26 @@ html.theme-dark {
   gap: 8px;
 }
 
+.rolodex-tabs.compact {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: var(--shadow-sm);
+  display: none;
+  z-index: 120;
+  min-width: 220px;
+}
+
+.rolodex-tabs.compact.open {
+  display: flex;
+}
+
 .tab-button {
   display: inline-flex;
   align-items: center;
@@ -552,6 +583,23 @@ html.theme-dark {
   color: var(--text-primary);
 }
 
+.rolodex-tabs-wrapper.compact .tab-menu-toggle {
+  display: inline-flex;
+}
+
+.rolodex-tabs-wrapper.compact .rolodex-tabs {
+  display: none;
+}
+
+.rolodex-tabs-wrapper.compact .rolodex-tabs.open {
+  display: flex;
+}
+
+.rolodex-tabs-wrapper.compact .tab-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
 @media (max-width: 768px) {
   .rolodex-tabs-wrapper {
     align-items: stretch;
@@ -573,7 +621,7 @@ html.theme-dark {
     padding: 8px;
     box-shadow: var(--shadow-sm);
     display: none;
-    z-index: 50;
+    z-index: 120;
     min-width: 200px;
   }
 
@@ -886,6 +934,45 @@ html.theme-dark {
 .table-refresh-button .loader {
   width: 18px;
   height: 18px;
+}
+
+.table-export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.table-export-button:hover,
+.table-export-button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.table-export-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.table-export-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.export-label {
+  white-space: nowrap;
 }
 
 .table-search {

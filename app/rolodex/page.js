@@ -104,6 +104,27 @@ function IconRefresh(props) {
   );
 }
 
+function IconDownload(props) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
 function IconMenu(props) {
   return (
     <svg
@@ -826,6 +847,7 @@ export default function Rolodex() {
   const [toasts, setToasts] = useState([]);
   const [activePage, setActivePage] = useState("create");
   const [isMobileTabsOpen, setIsMobileTabsOpen] = useState(false);
+  const [isCompactTabs, setIsCompactTabs] = useState(false);
   const [lastAction, setLastAction] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({ email: "", profileUrl: "" });
   const [fieldStatus, setFieldStatus] = useState({
@@ -3532,6 +3554,47 @@ export default function Rolodex() {
 
   const tabListId = "rolodex-tablist";
 
+  useEffect(() => {
+    const wrapper = tabsWrapperRef.current;
+    const tabList = wrapper?.querySelector(".rolodex-tabs");
+
+    if (!wrapper || !tabList) {
+      return undefined;
+    }
+
+    const checkWrap = () => {
+      const previousDisplay = tabList.style.display;
+      if (tabList.classList.contains("compact")) {
+        tabList.style.display = "flex";
+      }
+      const firstTab = tabList.querySelector(".tab-button");
+      const rowHeight = firstTab?.getBoundingClientRect().height || 0;
+      const listHeight = tabList.getBoundingClientRect().height;
+      const hasWrap =
+        listHeight > (rowHeight || listHeight) * 1.2 ||
+        tabList.scrollWidth > tabList.clientWidth + 1;
+      setIsCompactTabs(hasWrap);
+      tabList.style.display = previousDisplay;
+    };
+
+    const resizeObserver = new ResizeObserver(checkWrap);
+    resizeObserver.observe(tabList);
+    window.addEventListener("resize", checkWrap);
+
+    checkWrap();
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", checkWrap);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactTabs && isMobileTabsOpen) {
+      setIsMobileTabsOpen(false);
+    }
+  }, [isCompactTabs, isMobileTabsOpen]);
+
   const handleTabClick = useCallback(
     (tabId) => {
       setActivePage(tabId);
@@ -3614,6 +3677,69 @@ export default function Rolodex() {
 
   const isSampleView =
     viewRecords.length === 0 && resolvedViewRecords.length > 0;
+
+  const handleExportView = useCallback(() => {
+    const recordsToExport =
+      viewRecords.length > 0 ? viewRecords : resolvedViewRecords;
+    if (recordsToExport.length === 0 || isSampleView) {
+      pushToast("info", "Load contacts to export them.");
+      return;
+    }
+
+    const sanitizeCell = (value) => {
+      if (value === null || value === undefined) {
+        return "";
+      }
+      return String(value).replace(/[\t\n\r]+/g, " ").trim();
+    };
+
+    const rows = recordsToExport.map((record) => {
+      const engagement = computeEngagementStatus(record);
+      return viewColumns.map((column) => {
+        switch (column.id) {
+          case "local_id": {
+            const contactIdValue = resolveContactId(record);
+            const localIdValue =
+              record.local_id ??
+              record.localId ??
+              record.contact_id ??
+              record.contactId ??
+              contactIdValue;
+            return sanitizeCell(localIdValue ?? "");
+          }
+          case "full_name":
+            return sanitizeCell(record.full_name ?? record.fullName ?? "");
+          case "profile_url":
+            return sanitizeCell(record.profile_url ?? record.profileUrl ?? "");
+          case "engagement":
+            return sanitizeCell(engagement.label);
+          default:
+            return sanitizeCell(record[column.id] ?? "");
+        }
+      });
+    });
+
+    const headerRow = viewColumns.map((column) => column.label);
+    const data = [headerRow, ...rows]
+      .map((row) => row.join("\t"))
+      .join("\n");
+    const blob = new Blob([data], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "contacts-export.xls";
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [
+    computeEngagementStatus,
+    pushToast,
+    resolvedViewRecords,
+    isSampleView,
+    viewColumns,
+    viewRecords,
+  ]);
 
   const formatProfileHref = (value) => {
     if (!value || typeof value !== "string") {
@@ -3876,12 +4002,12 @@ export default function Rolodex() {
       <section className="rolodex-card rolodex-card--no-heading" aria-label="Contacts workspace">
         <div className="context-toolbar" role="group" aria-label="Contact context">
           <div
-            className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}`}
+            className={`rolodex-tabs-wrapper${isMobileTabsOpen ? " open" : ""}${isCompactTabs ? " compact" : ""}`}
             ref={tabsWrapperRef}
           >
             <button
               type="button"
-              className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}`}
+              className={`tab-menu-toggle${isMobileTabsOpen ? " open" : ""}${isCompactTabs ? " compact" : ""}`}
               aria-expanded={isMobileTabsOpen}
               aria-controls={tabListId}
               aria-haspopup="menu"
@@ -3892,7 +4018,7 @@ export default function Rolodex() {
             </button>
             <nav
               id={tabListId}
-              className={`rolodex-tabs${isMobileTabsOpen ? " open" : ""}`}
+              className={`rolodex-tabs${isMobileTabsOpen ? " open" : ""}${isCompactTabs ? " compact" : ""}`}
               role="tablist"
               aria-label="Contact sections"
             >
@@ -5379,6 +5505,16 @@ export default function Rolodex() {
                   />
                 </div>
                 <div className="table-toolbar-actions">
+                  <button
+                    type="button"
+                    className="table-export-button"
+                    onClick={handleExportView}
+                    disabled={resolvedViewRecords.length === 0 || isSampleView}
+                    aria-label="Export contacts as XLS"
+                  >
+                    <IconDownload />
+                    <span className="export-label">Export XLS</span>
+                  </button>
                   <button
                     type="button"
                     className="table-refresh-button"
