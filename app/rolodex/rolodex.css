@@ -405,7 +405,7 @@ html.theme-dark {
   padding-bottom: 4px;
   scrollbar-width: none;
   position: relative;
-  z-index: 20;
+  z-index: 9999;
 }
 
 .context-toolbar::-webkit-scrollbar {
@@ -416,7 +416,7 @@ html.theme-dark {
   flex: 1 1 auto;
   min-width: 0;
   position: relative;
-  z-index: 40;
+  z-index: 9999;
 }
 
 .context-controls {
