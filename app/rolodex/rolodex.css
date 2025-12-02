@@ -541,7 +541,7 @@ html.theme-dark {
     padding: 8px;
     box-shadow: var(--shadow-sm);
     display: none;
-    z-index: 10;
+    z-index: 2147483647;
     min-width: 200px;
   }
 
@@ -1797,7 +1797,7 @@ html.theme-dark {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 9999;
+  z-index: 9000;
 }
 
 .toast {
